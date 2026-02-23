@@ -1,0 +1,168 @@
+.TH CLAUDEME 1 "February 2026" "claudeme 2.0.0" "User Commands"
+.SH NAME
+claudeme \- Claude Code account switcher
+.SH SYNOPSIS
+.B claudeme
+[\fICOMMAND\fR] [\fIARGS\fR]
+.SH DESCRIPTION
+.B claudeme
+is a terminal application for managing and switching between multiple Claude Code
+accounts (e.g., personal pro and company teams). Each account gets an isolated
+\fBCLAUDE_CONFIG_DIR\fR with its own authentication, settings, and session state.
+A shell hook exports the environment variable so \fBclaude\fR uses the right account.
+.SH HOW IT WORKS
+Each account is stored in its own directory at
+\fB~/.config/claudeme/profiles/<email>/\fR.
+When you run \fBclaudeme add\fR, Claude Code is launched with
+\fBCLAUDE_CONFIG_DIR\fR pointing to a staging directory. After you authenticate and
+exit, the directory is renamed to match the account email.
+.PP
+Switching accounts sets the active profile in \fBprofiles.json\fR. The shell hook
+exports \fBCLAUDE_CONFIG_DIR\fR to point to the active profile's directory. No
+file swapping or keychain manipulation is needed.
+.PP
+Short aliases can be assigned to accounts (e.g., \fBwork\fR for
+\fBuser@company.com\fR) and used with any command that accepts an account
+reference.
+.SH COMMANDS
+.SS Account Management
+.TP
+.B claudeme
+Launch interactive TUI to select an account.
+.TP
+.B claudeme add
+Add a new account. Launches \fBclaude\fR for authentication, then registers the
+account by email.
+.TP
+.B claudeme list\fR, \fBclaudeme ls
+List all accounts with active marker and aliases.
+.TP
+.B claudeme set \fIALIAS\fR|\fIEMAIL
+Switch to an account.
+.TP
+.B claudeme current\fR, \fBclaudeme whoami
+Show the active account.
+.RS
+.TP
+.B \-\-dir
+Output only the profile directory path (used by shell hook).
+.TP
+.B \-\-short
+Output alias or email (used by status line).
+.RE
+.TP
+.B claudeme remove \fIALIAS\fR|\fIEMAIL\fR, \fBclaudeme rm
+Remove an account and its config directory.
+.TP
+.B claudeme reset
+Remove all accounts, aliases, and config. Start fresh.
+.SS Aliases
+.TP
+.B claudeme alias add \fINAME\fR \fIEMAIL
+Create an alias for an account email.
+.TP
+.B claudeme alias list\fR, \fBclaudeme alias ls
+List all aliases.
+.TP
+.B claudeme alias rm \fINAME
+Remove an alias.
+.SS Auto-switch
+.TP
+.B claudeme auto
+Check rules for the current directory and output an \fBexport\fR command to
+stdout if a match is found (designed for shell hook eval).
+.TP
+.B claudeme rule add \fIPATTERN\fR \fIALIAS\fR|\fIEMAIL
+Add an auto-switch rule mapping a directory pattern to an account.
+.TP
+.B claudeme rule list\fR, \fBclaudeme rule ls
+List all auto-switch rules.
+.TP
+.B claudeme rule rm \fIPATTERN
+Remove an auto-switch rule.
+.TP
+.B claudeme config auto_apply on\fR|\fBoff
+Toggle whether matching rules auto-switch or just warn.
+.TP
+.B claudeme hook
+Print the shell hook for \fB.zshrc\fR or \fB.bashrc\fR.
+Add \fBeval "$(claudeme hook)"\fR to your shell rc file.
+.TP
+.B claudeme help\fR, \fBclaudeme \-\-help\fR, \fBclaudeme \-h
+Show help information.
+.SH TUI KEYBINDINGS
+.TP
+.B Up/Down
+Navigate the account list.
+.TP
+.B Enter
+Select the highlighted account.
+.TP
+.B d\fR, \fBx
+Delete the highlighted account (with confirmation).
+.TP
+.B /
+Filter/search accounts.
+.TP
+.B q\fR, \fBEsc\fR, \fBCtrl+C
+Quit without making changes.
+.SH ENVIRONMENT
+.TP
+.B CLAUDE_CONFIG_DIR
+Set by the shell hook to point to the active profile directory. Claude Code reads
+all configuration and credentials from this directory instead of \fB~/.claude/\fR.
+.SH FILES
+.TP
+.I ~/.config/claudeme/profiles.json
+Account metadata and active account email.
+.TP
+.I ~/.config/claudeme/aliases.json
+Alias-to-email mappings.
+.TP
+.I ~/.config/claudeme/rules.json
+Auto-switch rules (directory pattern to account mappings).
+.TP
+.I ~/.config/claudeme/settings.json
+User preferences (auto_apply on/off).
+.TP
+.I ~/.config/claudeme/profiles/<email>/
+Isolated CLAUDE_CONFIG_DIR for an account (replaces ~/.claude/).
+.TP
+.I ~/.config/claudeme/profiles/<email>.json
+Claude Code main config for an account (replaces ~/.claude.json).
+.SH EXAMPLES
+Add two accounts:
+.RS
+.nf
+claudeme add          # login with personal, then /exit
+claudeme add          # login with work, then /exit
+.fi
+.RE
+.TP
+Create aliases:
+.RS
+.nf
+claudeme alias add personal user@gmail.com
+claudeme alias add work user@company.com
+.fi
+.RE
+.TP
+Switch accounts:
+.B claudeme set work
+.TP
+Auto-switch by directory:
+.RS
+.nf
+claudeme config auto_apply on
+claudeme rule add ~/Developer/work work
+.fi
+.RE
+.TP
+Install the shell hook:
+.B eval "$(claudeme hook)"
+.SH AUTHOR
+Volodymyr Samoilenko <samoilenkovolodymyr@gmail.com>
+.SH SEE ALSO
+.BR claude (1)
+.SH BUGS
+Report bugs at: https://github.com/vosamoilenko/claudeme/issues
