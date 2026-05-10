@@ -21,6 +21,13 @@ func ConfigDir() string {
 	return configDir
 }
 
+// SetConfigDir overrides the config directory (used by tests).
+func SetConfigDir(dir string) {
+	configDir = dir
+	os.MkdirAll(configDir, 0755)
+	os.MkdirAll(filepath.Join(configDir, "profiles"), 0755)
+}
+
 // ProfileDir returns the CLAUDE_CONFIG_DIR path for a given profile (keyed by email).
 func ProfileDir(email string) string {
 	return filepath.Join(configDir, "profiles", email)
@@ -282,6 +289,66 @@ func containsPathBoundary(path, pattern string) bool {
 		}
 		start = idx + 1
 	}
+}
+
+// ============ Folder Profiles Config ============
+
+// FolderProfilesConfig maps absolute folder paths to profile emails.
+// This remembers which account was used in each directory.
+type FolderProfilesConfig struct {
+	FolderProfiles map[string]string `json:"folder_profiles"`
+}
+
+func folderProfilesPath() string {
+	return filepath.Join(configDir, "folder_profiles.json")
+}
+
+func LoadFolderProfiles() (*FolderProfilesConfig, error) {
+	cfg := &FolderProfilesConfig{FolderProfiles: make(map[string]string)}
+
+	data, err := os.ReadFile(folderProfilesPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return cfg, nil
+		}
+		return nil, err
+	}
+
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+
+	if cfg.FolderProfiles == nil {
+		cfg.FolderProfiles = make(map[string]string)
+	}
+
+	return cfg, nil
+}
+
+func (f *FolderProfilesConfig) Save() error {
+	data, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(folderProfilesPath(), data, 0644)
+}
+
+func (f *FolderProfilesConfig) SetProfileForFolder(folder, email string) {
+	f.FolderProfiles[filepath.Clean(folder)] = email
+}
+
+func (f *FolderProfilesConfig) GetProfileForFolder(folder string) (string, bool) {
+	email, ok := f.FolderProfiles[filepath.Clean(folder)]
+	return email, ok
+}
+
+func (f *FolderProfilesConfig) RemoveFolder(folder string) bool {
+	key := filepath.Clean(folder)
+	if _, ok := f.FolderProfiles[key]; !ok {
+		return false
+	}
+	delete(f.FolderProfiles, key)
+	return true
 }
 
 // ============ Settings Config ============

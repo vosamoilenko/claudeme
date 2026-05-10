@@ -32,14 +32,30 @@ func Auto() {
 		return
 	}
 
-	rule := rules.FindRuleForPath(cwd)
-	if rule == nil {
-		return
+	// Priority 1: Exact folder → profile mapping (remembers per-repo decisions)
+	var profileEmail string
+	var matchSource string
+
+	fp, _ := config.LoadFolderProfiles()
+	if fp != nil {
+		if email, ok := fp.GetProfileForFolder(cwd); ok {
+			profileEmail = email
+			matchSource = "folder"
+		}
 	}
 
-	profileEmail := rule.Profile
+	// Priority 2: Pattern-based rules
+	var rule *config.Rule
+	if profileEmail == "" {
+		rule = rules.FindRuleForPath(cwd)
+		if rule == nil {
+			return
+		}
+		profileEmail = rule.Profile
+		matchSource = "rule: " + rule.Pattern
+	}
 	if _, exists := cfg.Profiles[profileEmail]; !exists {
-		fmt.Fprintf(os.Stderr, "%s Rule matches %q but profile doesn't exist\n",
+		fmt.Fprintf(os.Stderr, "%s Match for %q but profile doesn't exist\n",
 			WarnStyle.Render("!"), profileEmail)
 		return
 	}
@@ -67,8 +83,8 @@ func Auto() {
 				name = a
 			}
 		}
-		fmt.Fprintf(os.Stderr, "%s Auto-switched to %s (rule: %s)\n",
-			SuccessStyle.Render("✻"), name, rule.Pattern)
+		fmt.Fprintf(os.Stderr, "%s Auto-switched to %s (%s)\n",
+			SuccessStyle.Render("✻"), name, matchSource)
 	} else {
 		name := profileEmail
 		if aliases != nil {
@@ -78,10 +94,114 @@ func Auto() {
 		}
 		fmt.Fprintf(os.Stderr, "%s Profile mismatch!\n", WarnStyle.Render("!"))
 		fmt.Fprintf(os.Stderr, "  Current:  %s\n", cfg.Active)
-		fmt.Fprintf(os.Stderr, "  Expected: %s (rule: %s)\n", name, rule.Pattern)
+		fmt.Fprintf(os.Stderr, "  Expected: %s (%s)\n", name, matchSource)
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "%s\n", DimStyle.Render("Run 'claudeme use "+rule.Profile+"' to switch"))
+		fmt.Fprintf(os.Stderr, "%s\n", DimStyle.Render("Run 'claudeme use "+profileEmail+"' to switch"))
 		fmt.Fprintf(os.Stderr, "%s\n", DimStyle.Render("Or 'claudeme config auto_apply on' to auto-switch"))
+	}
+}
+
+// Folder manages per-folder profile mappings. These are recorded automatically
+// when you run `claudeme use` in a directory, or can be managed manually.
+func Folder() {
+	if len(os.Args) < 3 {
+		// Default: list
+		listFolders()
+		return
+	}
+
+	switch os.Args[2] {
+	case "list", "ls":
+		listFolders()
+	case "set":
+		if len(os.Args) < 4 {
+			fmt.Fprintf(os.Stderr, "Usage: claudeme folder set <alias|email>\n")
+			fmt.Fprintf(os.Stderr, "Sets the profile for the current directory.\n")
+			os.Exit(1)
+		}
+		input := os.Args[3]
+		aliases, _ := config.LoadAliases()
+		email := input
+		if aliases != nil {
+			email = aliases.ResolveAlias(input)
+		}
+		cfg, _ := config.LoadProfiles()
+		if _, exists := cfg.Profiles[email]; !exists {
+			fmt.Fprintf(os.Stderr, "%s Profile %q not found.\n", WarnStyle.Render("!"), input)
+			os.Exit(1)
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting current directory: %v\n", err)
+			os.Exit(1)
+		}
+		fp, _ := config.LoadFolderProfiles()
+		if fp == nil {
+			fp = &config.FolderProfilesConfig{FolderProfiles: make(map[string]string)}
+		}
+		fp.SetProfileForFolder(cwd, email)
+		if err := fp.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving folder profiles: %v\n", err)
+			os.Exit(1)
+		}
+		display := displayName(email, aliases)
+		fmt.Printf("%s %s -> %s\n", SuccessStyle.Render("*"), cwd, display)
+	case "rm", "remove":
+		var folder string
+		if len(os.Args) >= 4 {
+			folder = os.Args[3]
+		} else {
+			var err error
+			folder, err = os.Getwd()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error getting current directory: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		fp, _ := config.LoadFolderProfiles()
+		if fp == nil || !fp.RemoveFolder(folder) {
+			fmt.Fprintf(os.Stderr, "No mapping for: %s\n", folder)
+			os.Exit(1)
+		}
+		if err := fp.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving folder profiles: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s Removed mapping for %s\n", SuccessStyle.Render("*"), folder)
+	case "clear":
+		fp := &config.FolderProfilesConfig{FolderProfiles: make(map[string]string)}
+		if err := fp.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving folder profiles: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s Cleared all folder mappings\n", SuccessStyle.Render("*"))
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown folder command: %s\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Usage: claudeme folder <list|set|rm|clear>\n")
+		os.Exit(1)
+	}
+}
+
+func listFolders() {
+	fp, err := config.LoadFolderProfiles()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading folder profiles: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(fp.FolderProfiles) == 0 {
+		fmt.Println("No folder mappings.")
+		fmt.Println(DimStyle.Render("Mappings are created automatically when you run 'claudeme use' in a directory."))
+		return
+	}
+
+	aliases, _ := config.LoadAliases()
+
+	fmt.Println(HeaderStyle.Render("Folder mappings:"))
+	fmt.Println()
+	for folder, email := range fp.FolderProfiles {
+		display := displayName(email, aliases)
+		fmt.Printf("  %s -> %s\n", folder, display)
 	}
 }
 

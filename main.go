@@ -41,6 +41,8 @@ func main() {
 		cmd.Auto()
 	case "rule":
 		cmd.Rule()
+	case "folder":
+		cmd.Folder()
 	case "config":
 		cmd.Config()
 	case "hook":
@@ -83,6 +85,10 @@ func printHelp() {
 	fmt.Println("  claudeme rule add <path> <alias>    Auto-switch when entering directory")
 	fmt.Println("  claudeme rule list                  List rules")
 	fmt.Println("  claudeme rule rm <path>             Remove rule")
+	fmt.Println("  claudeme folder list                List remembered folder mappings")
+	fmt.Println("  claudeme folder set <alias|email>   Set profile for current directory")
+	fmt.Println("  claudeme folder rm [path]           Remove folder mapping")
+	fmt.Println("  claudeme folder clear               Clear all folder mappings")
 	fmt.Println("  claudeme config auto_apply <on|off> Toggle auto-apply")
 	fmt.Println("  claudeme hook                       Print shell hook for .zshrc")
 	fmt.Println()

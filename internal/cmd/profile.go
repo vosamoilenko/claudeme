@@ -217,6 +217,15 @@ func ActivateProfile(input string) {
 		os.Exit(1)
 	}
 
+	// Remember this profile for the current directory
+	if cwd, err := os.Getwd(); err == nil {
+		fp, _ := config.LoadFolderProfiles()
+		if fp != nil {
+			fp.SetProfileForFolder(cwd, email)
+			fp.Save()
+		}
+	}
+
 	printProfileSummary(email, aliases)
 }
 
