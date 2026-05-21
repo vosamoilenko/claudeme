@@ -27,7 +27,7 @@ func main() {
 		cmd.Remove()
 	case "use":
 		cmd.Use()
-	case "current", "whoami":
+	case "me", "whoami":
 		cmd.Current()
 	case "reset":
 		cmd.Reset()
@@ -72,7 +72,7 @@ func printHelp() {
 	fmt.Println("  claudeme add                        Add account (launches claude login)")
 	fmt.Println("  claudeme list                       List accounts")
 	fmt.Println("  claudeme use <alias|email>          Switch active account")
-	fmt.Println("  claudeme current                    Show active account")
+	fmt.Println("  claudeme me                         Show active profile path")
 	fmt.Println("  claudeme remove <alias|email>       Remove account")
 	fmt.Println("  claudeme reset                      Remove all accounts")
 	fmt.Println()
