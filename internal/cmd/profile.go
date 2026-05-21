@@ -304,20 +304,7 @@ func Current() {
 		return
 	}
 
-	aliases, _ := config.LoadAliases()
-	profile, _ := cfg.GetActive()
-
-	fmt.Printf("%s %s", HeaderStyle.Render("Active:"), cfg.Active)
-	if aliases != nil {
-		if a := aliases.FindAlias(cfg.Active); a != "" {
-			fmt.Printf(" (%s)", a)
-		}
-	}
-	if profile.Org != "" {
-		fmt.Printf(" [%s]", profile.Org)
-	}
-	fmt.Println()
-	fmt.Println(DimStyle.Render("CLAUDE_CONFIG_DIR=" + config.ProfileDir(cfg.Active)))
+	fmt.Print(config.ProfileDir(cfg.Active))
 }
 
 // printProfileSummary prints the active profile in compact form.
