@@ -48,6 +48,10 @@ func main() {
 	case "hook":
 		cmd.Hook()
 
+	// Sessions
+	case "sessions", "ss":
+		cmd.Sessions()
+
 	// TUI picker
 	case "tui":
 		runTUI()
@@ -73,6 +77,7 @@ func printHelp() {
 	fmt.Println("  claudeme list                       List accounts")
 	fmt.Println("  claudeme use <alias|email>          Switch active account")
 	fmt.Println("  claudeme me                         Show active profile path")
+	fmt.Println("  claudeme sessions (ss)              List sessions for current project")
 	fmt.Println("  claudeme remove <alias|email>       Remove account")
 	fmt.Println("  claudeme reset                      Remove all accounts")
 	fmt.Println()
