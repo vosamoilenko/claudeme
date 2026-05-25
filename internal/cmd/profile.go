@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/vosamoilenko/claudeme/internal/config"
 )
@@ -23,30 +24,29 @@ func List() {
 
 	aliases, _ := config.LoadAliases()
 
-	fmt.Println(HeaderStyle.Render("Profiles:"))
-	fmt.Println()
-	fmt.Printf("  %s %s\n\n", DimStyle.Render("shared:"), config.SharedDir())
-	for email, p := range cfg.Profiles {
-		marker := "  "
+	home, _ := os.UserHomeDir()
+	shorten := func(p string) string { return strings.Replace(p, home, "~", 1) }
+
+	for email := range cfg.Profiles {
+		marker := DimStyle.Render("✻")
 		if email == cfg.Active {
-			marker = SuccessStyle.Render("* ")
+			marker = SuccessStyle.Render("✻")
 		}
 
 		alias := ""
 		if aliases != nil {
 			if a := aliases.FindAlias(email); a != "" {
-				alias = " " + HeaderStyle.Render(a)
+				alias = HeaderStyle.Render(a)
 			}
 		}
 
-		org := ""
-		if p.Org != "" {
-			org = " " + DimStyle.Render("["+p.Org+"]")
+		label := email
+		if alias != "" {
+			label = alias
 		}
-
-		fmt.Printf("  %s%s%s%s\n", marker, email, alias, org)
-		fmt.Printf("    %s\n", DimStyle.Render(config.ProfileDir(email)))
+		fmt.Printf("%s%s %s\n", marker, label, DimStyle.Render(shorten(config.ProfileDir(email))))
 	}
+	fmt.Printf("%s %s\n", DimStyle.Render("shared"), DimStyle.Render(shorten(config.SharedDir())))
 }
 
 // Add creates a new profile by launching Claude in a staging dir,
