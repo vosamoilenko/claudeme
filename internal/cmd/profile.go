@@ -25,6 +25,7 @@ func List() {
 
 	fmt.Println(HeaderStyle.Render("Profiles:"))
 	fmt.Println()
+	fmt.Printf("  %s %s\n\n", DimStyle.Render("shared:"), config.SharedDir())
 	for email, p := range cfg.Profiles {
 		marker := "  "
 		if email == cfg.Active {
@@ -133,7 +134,7 @@ func RemoveProfile(input string) {
 		os.Exit(1)
 	}
 
-	// Remove profile directory and config JSON
+	// Remove account directory (symlinks get removed, shared data stays)
 	os.RemoveAll(config.ProfileDir(email))
 	os.Remove(config.ProfileConfigJSON(email))
 

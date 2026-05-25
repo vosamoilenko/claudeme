@@ -315,6 +315,45 @@ func TestAliases_Remove(t *testing.T) {
 	}
 }
 
+// ── Symlinks ───────────────────────────────────────────────────
+
+func TestSetupAccountSymlinks(t *testing.T) {
+	setupTestDir(t)
+
+	email := "test@example.com"
+	accountDir := ProfileDir(email)
+	os.MkdirAll(accountDir, 0755)
+
+	if err := SetupAccountSymlinks(email); err != nil {
+		t.Fatalf("SetupAccountSymlinks failed: %v", err)
+	}
+
+	for _, item := range SharedItems() {
+		link := filepath.Join(accountDir, item)
+		target, err := os.Readlink(link)
+		if err != nil {
+			t.Fatalf("expected symlink for %s, got error: %v", item, err)
+		}
+		expected := filepath.Join(SharedDir(), item)
+		if target != expected {
+			t.Fatalf("expected symlink target %s, got %s", expected, target)
+		}
+	}
+}
+
+func TestSetupAccountSymlinks_Idempotent(t *testing.T) {
+	setupTestDir(t)
+
+	email := "test@example.com"
+	accountDir := ProfileDir(email)
+	os.MkdirAll(accountDir, 0755)
+
+	SetupAccountSymlinks(email)
+	if err := SetupAccountSymlinks(email); err != nil {
+		t.Fatalf("second SetupAccountSymlinks should not fail: %v", err)
+	}
+}
+
 // ── Settings ────────────────────────────────────────────────────
 
 func TestSettings_DefaultsAndPersist(t *testing.T) {

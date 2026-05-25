@@ -50,8 +50,8 @@ func ReadProfileAccount(email string) (readEmail, org string) {
 // possible locations where Claude Code stores its JSON.
 func readAccountFrom(dirName string) (email, org string) {
 	paths := []string{
-		filepath.Join(config.ConfigDir(), "profiles", dirName+".json"),
-		filepath.Join(config.ConfigDir(), "profiles", dirName, ".claude.json"),
+		filepath.Join(config.ConfigDir(), "accounts", dirName+".json"),
+		filepath.Join(config.ConfigDir(), "accounts", dirName, ".claude.json"),
 	}
 
 	for _, path := range paths {
@@ -79,8 +79,8 @@ func readAccountFrom(dirName string) (email, org string) {
 	return "", ""
 }
 
-// FinalizeStagingProfile moves the staging directory to the final profile
-// directory named after the email.
+// FinalizeStagingProfile moves the staging directory to the final account
+// directory, then replaces shared items with symlinks to the shared dir.
 func FinalizeStagingProfile(email string) error {
 	stagingDir := config.StagingDir()
 	stagingJSON := config.StagingConfigJSON()
@@ -101,6 +101,11 @@ func FinalizeStagingProfile(email string) error {
 		if err := os.Rename(stagingJSON, finalJSON); err != nil {
 			return fmt.Errorf("failed to move staging config: %w", err)
 		}
+	}
+
+	// Replace shared items with symlinks
+	if err := config.SetupAccountSymlinks(email); err != nil {
+		return fmt.Errorf("failed to setup symlinks: %w", err)
 	}
 
 	return nil

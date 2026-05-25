@@ -375,7 +375,7 @@ _claudeme_sync_env() {
     email=$(sed -n 's/.*"active": *"\([^"]*\)".*/\1/p' "$_CLAUDEME_DIR/profiles.json")
   fi
   if [[ -n "$email" ]]; then
-    export CLAUDE_CONFIG_DIR="$_CLAUDEME_DIR/profiles/$email"
+    export CLAUDE_CONFIG_DIR="$_CLAUDEME_DIR/accounts/$email"
     # Resolve alias
     if [[ -f "$_CLAUDEME_DIR/aliases.json" ]]; then
       alias_name=$(sed -n "s/.*\"\([^\"]*\)\": *\"${email}\".*/\1/p" "$_CLAUDEME_DIR/aliases.json")

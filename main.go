@@ -8,6 +8,7 @@ import (
 	"github.com/vosamoilenko/claudeme/internal/cmd"
 	"github.com/vosamoilenko/claudeme/internal/config"
 	"github.com/vosamoilenko/claudeme/internal/ui"
+	"github.com/vosamoilenko/claudeme/internal/version"
 )
 
 func main() {
@@ -56,6 +57,10 @@ func main() {
 	case "tui":
 		runTUI()
 
+	// Version
+	case "version", "-v", "--version":
+		version.Print()
+
 	// Help
 	case "help", "-h", "--help":
 		printHelp()
@@ -80,6 +85,7 @@ func printHelp() {
 	fmt.Println("  claudeme sessions (ss)              List sessions for current project")
 	fmt.Println("  claudeme remove <alias|email>       Remove account")
 	fmt.Println("  claudeme reset                      Remove all accounts")
+	fmt.Println("  claudeme version                    Show version")
 	fmt.Println()
 	fmt.Println(cmd.HeaderStyle.Render("Aliases:"))
 	fmt.Println("  claudeme alias add <name> <email>   Create alias for an account")
@@ -98,7 +104,8 @@ func printHelp() {
 	fmt.Println("  claudeme hook                       Print shell hook for .zshrc")
 	fmt.Println()
 	fmt.Println(cmd.HeaderStyle.Render("How it works:"))
-	fmt.Println("  Each account gets an isolated CLAUDE_CONFIG_DIR with its own auth.")
+	fmt.Println("  Each account gets its own CLAUDE_CONFIG_DIR with auth.")
+	fmt.Println("  Sessions, projects, and settings are shared across accounts via symlinks.")
 	fmt.Println("  The shell hook exports CLAUDE_CONFIG_DIR so claude uses the right account.")
 	fmt.Println()
 	fmt.Println("Config: ~/.config/claudeme/")

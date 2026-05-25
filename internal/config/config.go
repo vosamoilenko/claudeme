@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,11 +10,41 @@ import (
 
 var configDir string
 
+var sharedItems = []string{
+	"projects",
+	"sessions",
+	"plans",
+	"tasks",
+	"todos",
+	"file-history",
+	"paste-cache",
+	"backups",
+	"history.jsonl",
+	"settings.json",
+	"plugins",
+	"telemetry",
+	"memory",
+}
+
+var perAccountItems = []string{
+	".claude.json",
+	"stats-cache.json",
+	"policy-limits.json",
+	"remote-settings.json",
+	"mcp-needs-auth-cache.json",
+	".last-cleanup",
+	"session-env",
+	"shell-snapshots",
+	"ide",
+	"cache",
+}
+
 func init() {
 	home, _ := os.UserHomeDir()
 	configDir = filepath.Join(home, ".config", "claudeme")
 	os.MkdirAll(configDir, 0755)
-	os.MkdirAll(filepath.Join(configDir, "profiles"), 0755)
+	os.MkdirAll(filepath.Join(configDir, "accounts"), 0755)
+	os.MkdirAll(filepath.Join(configDir, "shared"), 0755)
 }
 
 // ConfigDir returns the base config directory
@@ -25,28 +56,85 @@ func ConfigDir() string {
 func SetConfigDir(dir string) {
 	configDir = dir
 	os.MkdirAll(configDir, 0755)
-	os.MkdirAll(filepath.Join(configDir, "profiles"), 0755)
+	os.MkdirAll(filepath.Join(configDir, "accounts"), 0755)
+	os.MkdirAll(filepath.Join(configDir, "shared"), 0755)
 }
 
-// ProfileDir returns the CLAUDE_CONFIG_DIR path for a given profile (keyed by email).
+// SharedDir returns the shared data directory.
+func SharedDir() string {
+	return filepath.Join(configDir, "shared")
+}
+
+// SharedItems returns the list of items that should be symlinked to shared.
+func SharedItems() []string {
+	return sharedItems
+}
+
+// PerAccountItems returns the list of items that stay per-account.
+func PerAccountItems() []string {
+	return perAccountItems
+}
+
+// ProfileDir returns the CLAUDE_CONFIG_DIR path for a given account (keyed by email).
 func ProfileDir(email string) string {
-	return filepath.Join(configDir, "profiles", email)
+	return filepath.Join(configDir, "accounts", email)
 }
 
 // ProfileConfigJSON returns the .json file Claude creates beside the config dir.
-// e.g., ~/.config/claudeme/profiles/user@example.com.json
 func ProfileConfigJSON(email string) string {
-	return filepath.Join(configDir, "profiles", email+".json")
+	return filepath.Join(configDir, "accounts", email+".json")
 }
 
 // StagingDir returns the temporary staging directory used during `add`.
 func StagingDir() string {
-	return filepath.Join(configDir, "profiles", "_staging")
+	return filepath.Join(configDir, "accounts", "_staging")
 }
 
 // StagingConfigJSON returns the staging .json config path.
 func StagingConfigJSON() string {
-	return filepath.Join(configDir, "profiles", "_staging.json")
+	return filepath.Join(configDir, "accounts", "_staging.json")
+}
+
+// SetupAccountSymlinks creates symlinks from an account dir to the shared dir.
+// Any existing real files/dirs for shared items are removed first.
+func SetupAccountSymlinks(email string) error {
+	accountDir := ProfileDir(email)
+	sharedDir := SharedDir()
+
+	for _, item := range sharedItems {
+		target := filepath.Join(sharedDir, item)
+		link := filepath.Join(accountDir, item)
+
+		// Skip if already a correct symlink
+		if dest, err := os.Readlink(link); err == nil {
+			if dest == target || dest == filepath.Join("../../shared", item) {
+				continue
+			}
+		}
+
+		// Remove existing file/dir at link path
+		os.RemoveAll(link)
+
+		// Ensure target exists in shared dir
+		info, err := os.Stat(target)
+		if os.IsNotExist(err) {
+			if filepath.Ext(item) != "" {
+				// It's a file — create empty
+				os.WriteFile(target, []byte{}, 0644)
+			} else {
+				// It's a directory — create empty
+				os.MkdirAll(target, 0755)
+			}
+		} else if err == nil && info.IsDir() {
+			// exists, fine
+		}
+
+		if err := os.Symlink(target, link); err != nil {
+			return fmt.Errorf("failed to symlink %s: %w", item, err)
+		}
+	}
+
+	return nil
 }
 
 // ============ Profiles Config ============

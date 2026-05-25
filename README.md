@@ -1,6 +1,6 @@
 # claudeme
 
-A fast account switcher for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Manage multiple Anthropic accounts with isolated config directories, aliases, and automatic profile switching based on your working directory.
+A fast account switcher for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Manage multiple Anthropic accounts with shared sessions/settings and automatic profile switching based on your working directory.
 
 ## Install
 
@@ -115,11 +115,40 @@ claudeme --resume abc123
 
 ## How it works
 
-Each account gets an isolated directory under `~/.config/claudeme/profiles/<email>/` that serves as its `CLAUDE_CONFIG_DIR`. Switching profiles updates which directory claude reads its auth and settings from.
+Each account gets a directory under `~/.config/claudeme/accounts/<email>/` that serves as its `CLAUDE_CONFIG_DIR`. Only auth (`.claude.json`) stays per-account — sessions, projects, history, settings, and plugins are shared across all accounts via symlinks to `~/.config/claudeme/shared/`.
+
+```
+~/.config/claudeme/
+├── shared/              # one copy of all shared data
+│   ├── projects/
+│   ├── sessions/
+│   ├── history.jsonl
+│   ├── settings.json
+│   └── ...
+├── accounts/
+│   ├── alice@company.com/
+│   │   ├── .claude.json              # real (auth)
+│   │   ├── projects -> ../../shared/projects  # symlink
+│   │   └── ...
+│   └── bob@gmail.com/
+│       ├── .claude.json
+│       └── ...
+```
 
 Auto-switch priority:
 1. **Folder mappings** - exact directory-to-profile associations (created via `claudeme folder set` or automatically when running `claudeme use`)
 2. **Rules** - pattern-based matching (e.g., `~/work` matches any subdirectory)
+
+### Migrating from profiles/ layout
+
+If you're upgrading from the old `profiles/`-based layout:
+
+```sh
+go run scripts/migrate.go
+eval "$(claudeme hook)"
+# verify, then:
+rm -rf ~/.config/claudeme/profiles.bak
+```
 
 ## Uninstall
 
