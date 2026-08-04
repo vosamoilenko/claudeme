@@ -69,6 +69,10 @@ func main() {
 		cmd.Usage()
 	case "archive":
 		cmd.Archive()
+	case "snapshot":
+		cmd.Snapshot()
+	case "history":
+		cmd.History()
 
 	// TUI picker
 	case "tui":
@@ -118,6 +122,16 @@ func printHelp() {
 	fmt.Println("  claudeme archive --install          Run it daily at 04:00 (launchd)")
 	fmt.Println("  claudeme archive --uninstall        Remove the daily job")
 	fmt.Println("  claudeme archive --status           Show schedule and tree sizes")
+	fmt.Println()
+	fmt.Println(cmd.HeaderStyle.Render("History (survives Claude's 30-day cleanup):"))
+	fmt.Println("  claudeme snapshot [-n]              Extract per-day usage into usage-history.json")
+	fmt.Println("  claudeme snapshot --install         Record it twice daily (launchd)")
+	fmt.Println("  claudeme snapshot --uninstall       Remove the job")
+	fmt.Println("  claudeme snapshot --status          Show schedule and what's recorded")
+	fmt.Println("  claudeme history [--days N] [--all] Print the recorded time series")
+	fmt.Println("  claudeme history --by model|project|skill")
+	fmt.Println("                                      Sum the range by dimension")
+	fmt.Println("  claudeme history --json             Emit the raw records")
 	fmt.Println()
 	fmt.Println(cmd.HeaderStyle.Render("Aliases:"))
 	fmt.Println("  claudeme alias add <name> <email>   Create alias for an account")

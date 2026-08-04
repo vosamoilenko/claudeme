@@ -72,7 +72,7 @@ alias ccd="cc --debug"
 | `claudeme list` (`ls`) | List all accounts |
 | `claudeme use <alias\|email>` | Switch active account |
 | `claudeme me` (`whoami`) | Show active profile directory |
-| `claudeme remove` (`rm`) | Remove an account |
+| `claudeme remove <alias\|email>` (`rm`) | Remove an account |
 | `claudeme reset` | Remove all accounts |
 | `claudeme tui` | Interactive TUI picker |
 
@@ -189,6 +189,39 @@ claudeme archive --uninstall  # remove the daily job
 Archived sessions are readable by `usage` but not resumable by Claude Code — the live tree is what `--resume` scans, so keep `--days` at least as long as you expect to resume something.
 
 Two things `archive` deliberately does not do: it never touches a transcript newer than the cutoff, and it never removes a transcript directory that was already empty — those empty directories are the last trace of projects whose history was deleted before archiving started.
+
+### Long-term usage history
+
+`archive` keeps the transcripts; `snapshot` keeps only the numbers. It reads every transcript still on disk, extracts per-day aggregates, and upserts them into one file — `~/.config/claudeme/shared/usage-history.json`. Nothing is copied or moved, and the file is a few KB a day, so it can outlive any transcript by years.
+
+```sh
+claudeme snapshot               # extract today's numbers (and backfill anything new)
+claudeme snapshot --dry-run     # what it would record
+claudeme snapshot --install     # record it at 03:00 and 15:00 (launchd, macOS)
+claudeme snapshot --uninstall   # remove the job
+claudeme snapshot --status      # schedule, days on record, file size
+
+claudeme history                # last 30 recorded days: cost, calls, sessions
+claudeme history --all          # everything on record
+claudeme history --by project   # sum the range by project (or model, or skill)
+claudeme history --json         # the raw records, for your own analysis
+```
+
+Each day holds its total plus the same total split by model, project and skill:
+
+```json
+"2026-08-02": {
+  "cost": 568.40, "calls": 7167, "in": 2036, "out": 4292610,
+  "cacheRead": 623884251, "cacheWrite": 34212805, "sessions": 224,
+  "models":   { "claude-opus-5": { "cost": 402.11, "calls": 5210, ... } },
+  "projects": { "phishen-impossible": { "cost": 331.02, "calls": 4188, ... } },
+  "skills":   { "(no skill)": { "cost": 291.74, "calls": 3901, ... } }
+}
+```
+
+Re-running is safe by design. Transcripts are append-only, so a full rescan of what is on disk plus a per-day upsert is idempotent — no ingest cursor, no double counting, and an interrupted run is fixed by the next one. A stored day is only overwritten when the rescan finds *at least as much* spend: once transcripts start ageing out, a lower number is loss, not news, and the recorded value wins. Days that shrink are reported, not silently kept.
+
+Sessions are counted per day, so one running over midnight counts on both. The costs don't double-count — every record is deduped by `requestId` across the whole scan.
 
 ### Forwarding args to claude
 

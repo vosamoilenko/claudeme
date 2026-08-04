@@ -602,23 +602,32 @@ type Report struct {
 	Lanes    map[string]*Stats
 	Agents   map[string]*Stats    // subagent spend by agent type
 	Cwds     map[string]*CwdStats // spend by the cwd the transcript ran in
-	Tools    map[string]int
-	Unpriced map[string]int // model strings with no list price, by call count
-	Total    Stats
-	Files    int
+	// Crossed breakdowns the durable snapshot needs, keyed day+Sep+model and
+	// day+Sep+skill. Report.Models and Report.Skills are whole-report totals;
+	// a time series needs them per day, and only this pass sees both at once.
+	DayModels map[string]*Stats
+	DaySkills map[string]*Stats
+	DaySess   map[string]map[string]bool // distinct session ids per day
+	Tools     map[string]int
+	Unpriced  map[string]int // model strings with no list price, by call count
+	Total     Stats
+	Files     int
 }
 
 func newReport() *Report {
 	return &Report{
-		Days:     map[string]*Stats{},
-		Models:   map[string]*Stats{},
-		Skills:   map[string]*Stats{},
-		Sessions: map[string]*Stats{},
-		Lanes:    map[string]*Stats{},
-		Agents:   map[string]*Stats{},
-		Cwds:     map[string]*CwdStats{},
-		Tools:    map[string]int{},
-		Unpriced: map[string]int{},
+		Days:      map[string]*Stats{},
+		Models:    map[string]*Stats{},
+		Skills:    map[string]*Stats{},
+		Sessions:  map[string]*Stats{},
+		Lanes:     map[string]*Stats{},
+		Agents:    map[string]*Stats{},
+		Cwds:      map[string]*CwdStats{},
+		DayModels: map[string]*Stats{},
+		DaySkills: map[string]*Stats{},
+		DaySess:   map[string]map[string]bool{},
+		Tools:     map[string]int{},
+		Unpriced:  map[string]int{},
 	}
 }
 
@@ -900,6 +909,12 @@ func analyzeFile(path, cwd string, rep *Report, seen map[string]bool, recentSkil
 		bump(rep.Sessions, sid, row)
 		bump(rep.Lanes, lane, row)
 		bumpCwd(rep.Cwds, cwd, day, skill, row)
+		bump(rep.DayModels, day+Sep+model, row)
+		bump(rep.DaySkills, day+Sep+skill, row)
+		if rep.DaySess[day] == nil {
+			rep.DaySess[day] = map[string]bool{}
+		}
+		rep.DaySess[day][sid] = true
 		rep.Total.add(row)
 	}
 	return nil
