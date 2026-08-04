@@ -132,9 +132,20 @@ func CleanupStaging() {
 	os.Remove(config.StagingConfigJSON())
 }
 
-// LaunchClaude forwards all arguments to the `claude` CLI with
-// CLAUDE_CONFIG_DIR set to the active profile's directory.
+// LaunchClaude forwards all arguments to the `claude` CLI. The profile comes
+// from $CLAUDEME_PROFILE when set (per-shell override, so two terminals can run
+// two accounts), otherwise from the globally active profile.
 func LaunchClaude(args []string) {
+	if override := os.Getenv("CLAUDEME_PROFILE"); override != "" {
+		email, err := ResolveProfile(override)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "CLAUDEME_PROFILE: %v\n", err)
+			os.Exit(1)
+		}
+		runClaude(config.ProfileDir(email), args)
+		return
+	}
+
 	cfg, err := config.LoadProfiles()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading profiles: %v\n", err)
@@ -146,8 +157,11 @@ func LaunchClaude(args []string) {
 		os.Exit(1)
 	}
 
-	configDir := config.ProfileDir(cfg.Active)
+	runClaude(config.ProfileDir(cfg.Active), args)
+}
 
+// runClaude execs `claude` with CLAUDE_CONFIG_DIR pointed at configDir.
+func runClaude(configDir string, args []string) {
 	cmd := exec.Command("claude", args...)
 	cmd.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+configDir)
 	cmd.Stdin = os.Stdin

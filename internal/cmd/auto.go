@@ -12,6 +12,12 @@ import (
 // Outputs `export CLAUDE_CONFIG_DIR=...` to stdout (eval'd by the shell hook).
 // Human-readable messages go to stderr (visible but not eval'd).
 func Auto() {
+	// A shell pinned to a profile ($CLAUDEME_PROFILE) opts out of auto-switching
+	// entirely — that's how two terminals stay on two different accounts.
+	if os.Getenv("CLAUDEME_PROFILE") != "" {
+		return
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return
@@ -371,6 +377,20 @@ _CLAUDEME_DIR="$HOME/.config/claudeme"
 # Read active email and resolve alias from JSON files (no binary call needed).
 _claudeme_sync_env() {
   local email="" alias_name=""
+  # A pinned shell wins over the global active profile, so several terminals
+  # can each hold a different account: export CLAUDEME_PROFILE=work
+  if [[ -n "$CLAUDEME_PROFILE" ]]; then
+    email=$(command claudeme resolve "$CLAUDEME_PROFILE" 2>/dev/null)
+    if [[ -z "$email" ]]; then
+      echo "claudeme: unknown profile in \$CLAUDEME_PROFILE: $CLAUDEME_PROFILE" >&2
+      unset CLAUDEME_PROFILE
+      _claudeme_sync_env
+      return 1
+    fi
+    export CLAUDE_CONFIG_DIR="$_CLAUDEME_DIR/accounts/$email"
+    export CLAUDE_PROFILE="$CLAUDEME_PROFILE"
+    return
+  fi
   if [[ -f "$_CLAUDEME_DIR/profiles.json" ]]; then
     email=$(sed -n 's/.*"active": *"\([^"]*\)".*/\1/p' "$_CLAUDEME_DIR/profiles.json")
   fi
@@ -388,7 +408,28 @@ _claudeme_sync_env() {
 }
 
 # Wrap the claudeme binary so env is updated after profile changes.
+# 'claudeme pin <alias|email>' / 'claudeme unpin' are shell-only: they set
+# $CLAUDEME_PROFILE in this shell, which pins it to one account regardless of
+# the global active profile or auto-switch rules.
 claudeme() {
+  case "$1" in
+    pin)
+      if [[ -z "$2" ]]; then
+        echo "Usage: claudeme pin <alias|email>" >&2
+        return 1
+      fi
+      export CLAUDEME_PROFILE="$2"
+      _claudeme_sync_env || return 1
+      echo "✻ pinned to $CLAUDE_PROFILE" >&2
+      return 0
+      ;;
+    unpin)
+      unset CLAUDEME_PROFILE
+      _claudeme_sync_env
+      echo "✻ unpinned (active: ${CLAUDE_PROFILE:-none})" >&2
+      return 0
+      ;;
+  esac
   command claudeme "$@"
   local rc=$?
   if [[ $rc -eq 0 ]]; then

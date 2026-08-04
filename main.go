@@ -28,6 +28,10 @@ func main() {
 		cmd.Remove()
 	case "use":
 		cmd.Use()
+	case "as":
+		cmd.As()
+	case "resolve":
+		cmd.Resolve()
 	case "me", "whoami":
 		cmd.Current()
 	case "reset":
@@ -48,10 +52,23 @@ func main() {
 		cmd.Config()
 	case "hook":
 		cmd.Hook()
+	case "pin", "unpin":
+		// Handled by the shell hook — a binary can't export into its parent shell.
+		fmt.Fprintf(os.Stderr, "claudeme %s needs the shell hook: eval \"$(claudeme hook)\"\n", os.Args[1])
+		fmt.Fprintln(os.Stderr, "Or set it yourself: export CLAUDEME_PROFILE=<alias|email>")
+		os.Exit(1)
 
 	// Sessions
 	case "sessions", "ss":
 		cmd.Sessions()
+
+	// Usage
+	case "projects":
+		cmd.Projects()
+	case "usage":
+		cmd.Usage()
+	case "archive":
+		cmd.Archive()
 
 	// TUI picker
 	case "tui":
@@ -81,11 +98,26 @@ func printHelp() {
 	fmt.Println("  claudeme add                        Add account (launches claude login)")
 	fmt.Println("  claudeme list                       List accounts")
 	fmt.Println("  claudeme use <alias|email>          Switch active account")
+	fmt.Println("  claudeme as <alias|email> [args...] Launch with one account, don't switch")
+	fmt.Println("  claudeme pin <alias|email>          Pin this shell to an account (needs hook)")
+	fmt.Println("  claudeme unpin                      Unpin this shell")
 	fmt.Println("  claudeme me                         Show active profile path")
 	fmt.Println("  claudeme sessions (ss)              List sessions for current project")
 	fmt.Println("  claudeme remove <alias|email>       Remove account")
 	fmt.Println("  claudeme reset                      Remove all accounts")
 	fmt.Println("  claudeme version                    Show version")
+	fmt.Println()
+	fmt.Println(cmd.HeaderStyle.Render("Usage reports:"))
+	fmt.Println("  claudeme projects [--cost] [--all] [--expand]")
+	fmt.Println("                                      List projects; --cost adds day/skill spend,")
+	fmt.Println("                                      --expand shows subfolders")
+	fmt.Println("  claudeme usage [name] [--top N]     Token/cost report (list pricing)")
+	fmt.Println()
+	fmt.Println(cmd.HeaderStyle.Render("Archive:"))
+	fmt.Println("  claudeme archive [--days N] [-n]    Compress transcripts out of the live tree")
+	fmt.Println("  claudeme archive --install          Run it daily at 04:00 (launchd)")
+	fmt.Println("  claudeme archive --uninstall        Remove the daily job")
+	fmt.Println("  claudeme archive --status           Show schedule and tree sizes")
 	fmt.Println()
 	fmt.Println(cmd.HeaderStyle.Render("Aliases:"))
 	fmt.Println("  claudeme alias add <name> <email>   Create alias for an account")

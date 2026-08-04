@@ -49,6 +49,18 @@ This gives you:
 - `$CLAUDE_PROFILE` shows the current alias or email
 - Automatic profile switching when you `cd` into directories with rules
 
+### Recommended aliases
+
+```sh
+alias cc='claudeme'
+alias ccyolo='cc --dangerously-skip-permissions \
+  --plugin-dir /path/to/your/skills \
+  --model "claude-opus-4-6[1m]" \
+  --thinking medium'
+alias ccc="cc --continue"
+alias ccd="cc --debug"
+```
+
 ## Commands
 
 ### Profile management
@@ -63,6 +75,38 @@ This gives you:
 | `claudeme remove` (`rm`) | Remove an account |
 | `claudeme reset` | Remove all accounts |
 | `claudeme tui` | Interactive TUI picker |
+
+### Two accounts at once
+
+`use` is global state — every terminal follows it. To run two accounts side by side, override per shell:
+
+```sh
+# terminal 1
+claudeme as work
+
+# terminal 2
+claudeme as personal
+```
+
+`as` launches claude with that account and leaves the active profile alone.
+
+To pin a whole terminal (so bare `claudeme`, aliases like `cc`, and `$CLAUDE_CONFIG_DIR` all follow it), use `pin` — it needs the shell hook:
+
+```sh
+claudeme pin personal   # this shell only
+claudeme                # → personal
+claudeme unpin          # back to the global active profile
+```
+
+Under the hood `pin` just sets `CLAUDEME_PROFILE`, so `CLAUDEME_PROFILE=work claudeme` works too. A pinned shell ignores auto-switch rules and mismatch warnings.
+
+Sessions, projects, and settings stay shared, so both terminals see the same history.
+
+| Command | Description |
+|---|---|
+| `claudeme as <alias\|email> [args...]` | Launch claude with one account, don't switch |
+| `claudeme pin <alias\|email>` | Pin the current shell to an account |
+| `claudeme unpin` | Unpin the current shell |
 
 ### Aliases
 
@@ -103,6 +147,48 @@ When `auto_apply` is off, claudeme warns about mismatches instead of switching.
 claudeme sessions   # list recent sessions for the current project
 claudeme ss         # shorthand
 ```
+
+### Usage reports
+
+Transcripts live in one shared directory, one folder per working directory. `projects` clusters those folders back into projects — nested subdirectories, prototypes, and worktree copies fold into the checkout they belong to.
+
+```sh
+claudeme projects            # what projects exist, sessions, last activity
+claudeme projects --cost     # cost column, plus per-day and per-skill spend
+claudeme projects --all      # include transcript dirs with no sessions
+
+claudeme usage               # report across all projects
+claudeme usage phishen       # one project (exact name wins, else substring)
+claudeme usage phishen --top 50
+```
+
+`usage` breaks spend down by day, model, skill, session, main-loop vs subagent, and agent type, and counts tool calls.
+
+Two things to know about the numbers:
+
+- **Cost is public list pricing.** On a Max/Pro subscription the real invoice is $0 — read these as "what this would have cost on the API". Models with no list price (synthetic messages, non-Anthropic) are excluded and reported at the bottom.
+- **Records are deduped by `requestId`.** Resuming a session replays earlier turns into the new transcript, so raw line counts double-count.
+
+Cache tokens are priced at the input rate times 2× (1h write), 1.25× (5m write), and 0.1× (read).
+
+Every report prints the date range it actually covers. That range is bounded by what is still on disk, not by when you worked — see below.
+
+### Archiving transcripts
+
+Claude Code deletes transcripts from its projects tree after `cleanupPeriodDays` (30 by default), and deleted history is gone: nothing else on disk records what a session spent. `archive` moves old transcripts into a gzipped mirror at `~/.config/claudeme/shared/archive/`, where the cleanup can never reach them. Reports read both trees, so history gets deeper over time instead of truncating.
+
+```sh
+claudeme archive              # move transcripts older than 7d into the archive
+claudeme archive --days 30    # keep a month in the live tree instead
+claudeme archive --dry-run    # what would move, and how much space it uses
+claudeme archive --status     # schedule, plus the size of each tree
+claudeme archive --install    # run it daily at 04:00 (launchd, macOS)
+claudeme archive --uninstall  # remove the daily job
+```
+
+Archived sessions are readable by `usage` but not resumable by Claude Code — the live tree is what `--resume` scans, so keep `--days` at least as long as you expect to resume something.
+
+Two things `archive` deliberately does not do: it never touches a transcript newer than the cutoff, and it never removes a transcript directory that was already empty — those empty directories are the last trace of projects whose history was deleted before archiving started.
 
 ### Forwarding args to claude
 

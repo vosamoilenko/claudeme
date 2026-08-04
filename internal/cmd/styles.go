@@ -8,4 +8,6 @@ var (
 	SuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	WarnStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
 	ErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	NameStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
+	MoneyStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("222"))
 )

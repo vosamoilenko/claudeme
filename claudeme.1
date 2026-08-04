@@ -40,6 +40,15 @@ List all accounts with active marker and aliases.
 .B claudeme set \fIALIAS\fR|\fIEMAIL
 Switch to an account.
 .TP
+.B claudeme as \fIALIAS\fR|\fIEMAIL\fR [\fICLAUDE-ARGS\fR...]
+Launch \fBclaude\fR with that account without changing the active one, so two
+terminals can run two accounts in parallel.
+.TP
+.B claudeme pin \fIALIAS\fR|\fIEMAIL\fR, \fBclaudeme unpin
+Pin the current shell to one account by setting \fBCLAUDEME_PROFILE\fR. A pinned
+shell overrides the active profile and skips auto\-switching. Requires the shell
+hook (\fBeval "$(claudeme hook)"\fR).
+.TP
 .B claudeme current\fR, \fBclaudeme whoami
 Show the active account.
 .RS
@@ -90,6 +99,43 @@ Add \fBeval "$(claudeme hook)"\fR to your shell rc file.
 .TP
 .B claudeme help\fR, \fBclaudeme \-\-help\fR, \fBclaudeme \-h
 Show help information.
+.SS Usage reports
+.TP
+.B claudeme projects \fR[\fB\-\-cost\fR] [\fB\-\-all\fR] [\fIQUERY\fR]
+List the projects found in the shared transcript directory. Transcript folders
+are clustered by working directory, so subdirectories, prototypes and worktree
+copies fold into the checkout they belong to.
+\fB\-\-cost\fR adds a cost column, which scans every transcript, and prints each
+project's spend per day and per skill beneath its row. Both are summed from the
+working directories the project owns, so they add up to its cost column.
+\fB\-\-all\fR includes transcript folders that hold no sessions.
+.TP
+.B claudeme usage \fR[\fIQUERY\fR] [\fB\-\-top\fR \fIN\fR]
+Report token spend for one project, or for all of them when \fIQUERY\fR is
+omitted. An exact project name wins; otherwise \fIQUERY\fR matches any project
+whose name or path contains it. Breaks spend down by day, model, skill,
+session, main loop vs subagent, and agent type. \fB\-\-top\fR limits the session
+table
+(default 20).
+.TP
+.B claudeme archive \fR[\fB\-\-days\fR \fIN\fR] [\fB\-\-dry\-run\fR] [\fB\-\-install\fR] [\fB\-\-uninstall\fR] [\fB\-\-status\fR]
+Move transcripts older than \fIN\fR days (default 7) out of the tree Claude Code
+manages and into a gzipped mirror at
+.IR ~/.config/claudeme/shared/archive .
+Claude Code deletes transcripts from its own tree after \fBcleanupPeriodDays\fR;
+archived ones are beyond its reach, and \fBprojects\fR and \fBusage\fR read both
+trees, so reports get deeper over time rather than truncating at the retention
+window. Archived sessions are readable by \fBusage\fR but not resumable by
+Claude Code.
+\fB\-\-dry\-run\fR reports what would move and touches nothing.
+\fB\-\-status\fR shows the schedule and the size of each tree.
+\fB\-\-install\fR schedules a daily run at 04:00 through launchd (macOS only);
+\fB\-\-uninstall\fR removes it, leaving already-archived transcripts in place.
+.PP
+Costs use public list pricing; on a Max or Pro subscription the real invoice is
+zero. Records are deduped by request id, because resuming a session replays
+earlier turns into the new transcript. Every report prints the date range it
+covers, which is bounded by the transcripts still on disk.
 .SH TUI KEYBINDINGS
 .TP
 .B Up/Down

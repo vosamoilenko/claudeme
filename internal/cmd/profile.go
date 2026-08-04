@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/vosamoilenko/claudeme/internal/config"
+	"github.com/vosamoilenko/claudeme/internal/version"
 )
 
 // List shows all profiles by email, with alias if available
@@ -15,6 +16,8 @@ func List() {
 		fmt.Fprintf(os.Stderr, "Error loading profiles: %v\n", err)
 		os.Exit(1)
 	}
+
+	fmt.Printf("claudeme %s\n\n", DimStyle.Render("v"+version.Version))
 
 	if len(cfg.Profiles) == 0 {
 		fmt.Println("No profiles found.")
@@ -28,25 +31,21 @@ func List() {
 	shorten := func(p string) string { return strings.Replace(p, home, "~", 1) }
 
 	for email := range cfg.Profiles {
-		marker := DimStyle.Render("✻")
+		marker := DimStyle.Render("*")
 		if email == cfg.Active {
-			marker = SuccessStyle.Render("✻")
-		}
-
-		alias := ""
-		if aliases != nil {
-			if a := aliases.FindAlias(email); a != "" {
-				alias = HeaderStyle.Render(a)
-			}
+			marker = SuccessStyle.Render("*")
 		}
 
 		label := email
-		if alias != "" {
-			label = alias
+		if aliases != nil {
+			if a := aliases.FindAlias(email); a != "" {
+				label = HeaderStyle.Render(a)
+			}
 		}
+
 		fmt.Printf("%s%s %s\n", marker, label, DimStyle.Render(shorten(config.ProfileDir(email))))
 	}
-	fmt.Printf("%s %s\n", DimStyle.Render("shared"), DimStyle.Render(shorten(config.SharedDir())))
+	fmt.Printf("%s %s\n", DimStyle.Render("#shared"), DimStyle.Render(shorten(config.SharedDir())))
 }
 
 // Add creates a new profile by launching Claude in a staging dir,
@@ -59,11 +58,9 @@ func Add() {
 	}
 
 	// Launch Claude with staging CLAUDE_CONFIG_DIR
-	if err := LaunchClaudeLogin(); err != nil {
-		fmt.Fprintf(os.Stderr, "\nClaude exited with error: %v\n", err)
-		CleanupStaging()
-		return
-	}
+	// Ignore exit code — Claude often exits non-zero on /exit or Ctrl+C.
+	// We check for a valid auth file below instead.
+	_ = LaunchClaudeLogin()
 
 	// Read the email from the authenticated session
 	email, org := ReadStagingAccount()

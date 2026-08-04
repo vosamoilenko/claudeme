@@ -160,6 +160,9 @@ func main() {
 		}
 	}
 
+	// Rewrite stale profiles/ paths in shared plugin JSON files
+	rewritePluginPaths(sharedDir, baseDir)
+
 	// Rename profiles/ to profiles.bak/ (keep as backup)
 	backupDir := filepath.Join(baseDir, "profiles.bak")
 	if err := os.Rename(profilesDir, backupDir); err != nil {
@@ -296,6 +299,29 @@ func copyDirRecursive(src, dst string) {
 		copyFile(path, target)
 		return nil
 	})
+}
+
+func rewritePluginPaths(sharedDir, baseDir string) {
+	pluginsDir := filepath.Join(sharedDir, "plugins")
+	files := []string{
+		filepath.Join(pluginsDir, "known_marketplaces.json"),
+		filepath.Join(pluginsDir, "installed_plugins.json"),
+	}
+
+	oldBase := filepath.Join(baseDir, "profiles")
+	newBase := filepath.Join(baseDir, "accounts")
+
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		updated := strings.ReplaceAll(string(data), oldBase, newBase)
+		if updated != string(data) {
+			os.WriteFile(path, []byte(updated), 0644)
+			fmt.Printf("  rewrote paths in %s\n", filepath.Base(path))
+		}
+	}
 }
 
 func fatal(format string, args ...interface{}) {

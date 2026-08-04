@@ -134,6 +134,32 @@ func SetupAccountSymlinks(email string) error {
 		}
 	}
 
+	RewritePluginPaths()
+	return nil
+}
+
+// RewritePluginPaths rewrites stale "profiles/" paths to "accounts/" in
+// shared/plugins JSON files for all known accounts.
+func RewritePluginPaths() error {
+	pluginsDir := filepath.Join(SharedDir(), "plugins")
+	files := []string{
+		filepath.Join(pluginsDir, "known_marketplaces.json"),
+		filepath.Join(pluginsDir, "installed_plugins.json"),
+	}
+
+	oldBase := filepath.Join(configDir, "profiles")
+	newBase := filepath.Join(configDir, "accounts")
+
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		updated := strings.ReplaceAll(string(data), oldBase, newBase)
+		if updated != string(data) {
+			os.WriteFile(path, []byte(updated), 0644)
+		}
+	}
 	return nil
 }
 
@@ -437,6 +463,27 @@ func (f *FolderProfilesConfig) RemoveFolder(folder string) bool {
 	}
 	delete(f.FolderProfiles, key)
 	return true
+}
+
+// defaultCleanupPeriodDays is Claude Code's own default: transcripts older
+// than this are deleted from the projects tree on startup.
+const defaultCleanupPeriodDays = 30
+
+// RetentionDays reports how long Claude Code keeps a transcript, read from the
+// settings file every account shares. Falls back to Claude Code's default when
+// the key is absent or the file is unreadable.
+func RetentionDays() int {
+	data, err := os.ReadFile(filepath.Join(SharedDir(), "settings.json"))
+	if err != nil {
+		return defaultCleanupPeriodDays
+	}
+	var s struct {
+		CleanupPeriodDays *int `json:"cleanupPeriodDays"`
+	}
+	if json.Unmarshal(data, &s) != nil || s.CleanupPeriodDays == nil {
+		return defaultCleanupPeriodDays
+	}
+	return *s.CleanupPeriodDays
 }
 
 // ============ Settings Config ============
