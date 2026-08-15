@@ -77,8 +77,9 @@ func ProjectsRoot() string {
 	return filepath.Join(config.SharedDir(), "projects")
 }
 
-// ArchiveRoot returns the directory `claudeme archive` moves old transcripts
-// to. It mirrors ProjectsRoot's layout, with the transcripts gzipped.
+// ArchiveRoot returns the frozen archive: transcripts a former `claudeme
+// archive` command gzipped out of the live tree. Nothing writes here any
+// more — reports read it so those sessions still count.
 func ArchiveRoot() string {
 	return filepath.Join(config.SharedDir(), "archive")
 }

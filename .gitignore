@@ -1,3 +1,13 @@
 claudeme
 *.exe
 .DS_Store
+
+# spike-summarize keeps its evidence local: results/, digests/ and prompts/ are
+# summaries of real sessions, client work included, and this repo is public.
+spike-summarize/results/
+spike-summarize/digests/
+spike-summarize/prompts/
+spike-summarize/BAKEOFF.md
+spike-summarize/docs/
+spike-summarize/*.log
+spike-summarize/*.timing

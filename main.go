@@ -67,12 +67,14 @@ func main() {
 		cmd.Projects()
 	case "usage":
 		cmd.Usage()
-	case "archive":
-		cmd.Archive()
 	case "snapshot":
 		cmd.Snapshot()
+	case "digest":
+		cmd.Digest()
 	case "history":
 		cmd.History()
+	case "heatmap":
+		cmd.Heatmap()
 
 	// TUI picker
 	case "tui":
@@ -116,12 +118,15 @@ func printHelp() {
 	fmt.Println("                                      List projects; --cost adds day/skill spend,")
 	fmt.Println("                                      --expand shows subfolders")
 	fmt.Println("  claudeme usage [name] [--top N]     Token/cost report (list pricing)")
+	fmt.Println("  claudeme heatmap [name] [--weeks N] [--metric cost|calls|sessions] [--all]")
+	fmt.Println("                                      Day-by-day activity grid")
 	fmt.Println()
-	fmt.Println(cmd.HeaderStyle.Render("Archive:"))
-	fmt.Println("  claudeme archive [--days N] [-n]    Compress transcripts out of the live tree")
-	fmt.Println("  claudeme archive --install          Run it daily at 04:00 (launchd)")
-	fmt.Println("  claudeme archive --uninstall        Remove the daily job")
-	fmt.Println("  claudeme archive --status           Show schedule and tree sizes")
+	fmt.Println(cmd.HeaderStyle.Render("Digest:"))
+	fmt.Println("  claudeme digest [--since D] [--all] [--archived] [--limit N] [-n]")
+	fmt.Println("                                      Summarize sessions into history/<date>/<project>.json")
+	fmt.Println("  claudeme digest --install           Run it daily at 05:00 (launchd)")
+	fmt.Println("  claudeme digest --uninstall         Remove the daily job")
+	fmt.Println("  claudeme digest --status            Show schedule and what's digested")
 	fmt.Println()
 	fmt.Println(cmd.HeaderStyle.Render("History (survives Claude's 30-day cleanup):"))
 	fmt.Println("  claudeme snapshot [-n]              Extract per-day usage into usage-history.json")

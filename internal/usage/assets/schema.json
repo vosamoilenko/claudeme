@@ -1,0 +1,179 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "goal",
+    "outcome",
+    "summary",
+    "projects",
+    "work_items",
+    "decisions",
+    "commands_of_note",
+    "open_threads",
+    "tags",
+    "learnings",
+    "dead_ends",
+    "user_preferences",
+    "environment_facts",
+    "next_session_brief"
+  ],
+  "properties": {
+    "goal": {
+      "type": "string",
+      "description": "What the user was trying to achieve, in one sentence, in their own framing."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "abandoned",
+        "exploratory",
+        "unclear"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "description": "3-8 sentences: what actually happened, in order. Concrete. No praise, no filler."
+    },
+    "projects": {
+      "type": "array",
+      "description": "Repos/directories worked in, absolute paths, most significant first.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "work_items": {
+      "type": "array",
+      "description": "Discrete pieces of work done.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "what",
+          "files",
+          "status"
+        ],
+        "properties": {
+          "what": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "in_progress",
+              "dropped"
+            ]
+          }
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "description": "Choices made and why \u2014 the things that would be expensive to re-derive later.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "decision",
+          "reason"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "commands_of_note": {
+      "type": "array",
+      "description": "Reusable commands worth keeping (build, deploy, one-off scripts). Verbatim. Not ls/cat/grep noise.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "open_threads": {
+      "type": "array",
+      "description": "Unfinished work, known bugs, explicit TODOs left at the end.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "5-10 lowercase keywords for search: tech, domain, activity.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "learnings": {
+      "type": "array",
+      "description": "Durable facts discovered about the system/codebase/tooling that were not obvious beforehand. Each must be reusable outside this session.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fact",
+          "evidence"
+        ],
+        "properties": {
+          "fact": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "What in the log shows it: a command, an error, a file."
+          }
+        }
+      }
+    },
+    "dead_ends": {
+      "type": "array",
+      "description": "Approaches tried that did not work, and why. The point is to stop a future session repeating them.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tried",
+          "why_it_failed"
+        ],
+        "properties": {
+          "tried": {
+            "type": "string"
+          },
+          "why_it_failed": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "user_preferences": {
+      "type": "array",
+      "description": "Preferences or corrections the user stated about how they want work done. Only explicit ones. Candidate CLAUDE.md material.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "environment_facts": {
+      "type": "array",
+      "description": "Concrete environment details: versions, install paths, config locations, service names, ports.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_session_brief": {
+      "type": "string",
+      "description": "2-4 sentences a fresh agent could start from tomorrow: where things stand and what to do next. Empty string if nothing is pending."
+    }
+  }
+}

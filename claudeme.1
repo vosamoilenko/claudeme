@@ -150,19 +150,39 @@ session, main loop vs subagent, and agent type. \fB\-\-top\fR limits the session
 table
 (default 20).
 .TP
-.B claudeme archive \fR[\fB\-\-days\fR \fIN\fR] [\fB\-\-dry\-run\fR] [\fB\-\-install\fR] [\fB\-\-uninstall\fR] [\fB\-\-status\fR]
-Move transcripts older than \fIN\fR days (default 7) out of the tree Claude Code
-manages and into a gzipped mirror at
-.IR ~/.config/claudeme/shared/archive .
-Claude Code deletes transcripts from its own tree after \fBcleanupPeriodDays\fR;
-archived ones are beyond its reach, and \fBprojects\fR and \fBusage\fR read both
-trees, so reports get deeper over time rather than truncating at the retention
-window. Archived sessions are readable by \fBusage\fR but not resumable by
-Claude Code.
-\fB\-\-dry\-run\fR reports what would move and touches nothing.
-\fB\-\-status\fR shows the schedule and the size of each tree.
-\fB\-\-install\fR schedules a daily run at 04:00 through launchd (macOS only);
-\fB\-\-uninstall\fR removes it, leaving already-archived transcripts in place.
+.B claudeme heatmap \fR[\fIQUERY\fR] [\fB\-\-weeks\fR \fIN\fR] [\fB\-\-metric\fR \fIM\fR] [\fB\-\-all\fR] [\fB\-\-live\fR]
+Draw activity as a grid of days, one square per day, weeks running left to
+right — the GitHub contribution graph for Claude Code. Shades are quartiles of
+the non-zero days on screen, so a quiet window still shows its own busy days.
+\fB\-\-metric\fR selects \fBcost\fR (default), \fBcalls\fR or \fBsessions\fR.
+\fB\-\-weeks\fR sets the width; the default is as much of a year as the terminal
+fits, and \fB\-\-all\fR reaches back to the first day with any activity.
+Days come from the snapshot history and the transcripts on disk, taking the
+larger of the two per day, so the grid spans further back than retention;
+\fB\-\-live\fR reads the transcripts alone. A \fIQUERY\fR scopes the grid to one
+project, matched as in \fBusage\fR; per-project session counts were never
+recorded in history, so \fB\-\-metric sessions\fR with a \fIQUERY\fR covers only
+the transcripts still on disk.
+.TP
+.B claudeme digest \fR[\fB\-\-since\fR \fIDATE\fR] [\fB\-\-all\fR] [\fB\-\-archived\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-dry\-run\fR] [\fB\-\-install\fR] [\fB\-\-uninstall\fR] [\fB\-\-status\fR]
+Summarize session transcripts into
+.IR ~/.config/claudeme/shared/history/<date>/<project>.json .
+Each session becomes one structured record — goal, outcome, work items,
+decisions, commands of note, dead ends, next\-session brief — written by
+\fBgpt\-5.6\-luna\fR through \fBcodex exec\fR against a fixed schema. Transcripts
+are only ever read; Claude Code owns their lifetime, and the digest is what
+survives its \fBcleanupPeriodDays\fR cleanup.
+Records are keyed by session id, so a session is never summarized twice and an
+interrupted run resumes where it stopped.
+The default window is yesterday; \fB\-\-since\fR widens it, \fB\-\-all\fR covers
+every session on disk, \fB\-\-archived\fR covers only the gzipped ones under
+.IR ~/.config/claudeme/shared/archive ,
+and \fB\-\-limit\fR stops after \fIN\fR sessions.
+\fB\-\-dry\-run\fR lists what would be summarized and writes nothing.
+\fB\-\-status\fR shows the schedule, what is on record, and what is left.
+\fB\-\-install\fR schedules a daily run at 05:00 through launchd (macOS only);
+\fB\-\-uninstall\fR removes it, leaving the digests in place.
+Requires \fBcodex\fR and \fBpython3\fR on \fBPATH\fR.
 .TP
 .B claudeme snapshot \fR[\fB\-\-dry\-run\fR] [\fB\-\-install\fR] [\fB\-\-uninstall\fR] [\fB\-\-status\fR]
 Extract per-day usage from every transcript still on disk and upsert it into
@@ -241,7 +261,7 @@ CLAUDE_CONFIG_DIR for an account (replaces ~/.claude/). Holds the account's own
 .TP
 .I ~/.config/claudeme/shared/
 One copy of the data shared by all accounts: projects, sessions, history,
-settings, plugins, and the transcript archive.
+settings, plugins, and the session digests.
 .SH EXAMPLES
 Add two accounts:
 .RS

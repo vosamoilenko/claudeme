@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -64,7 +63,7 @@ func Snapshot() {
 		os.Exit(1)
 	}
 
-	fresh := usage.Snapshot(rep, cwdProjects(projects))
+	fresh := usage.Snapshot(rep, usage.ProjectNames(projects))
 
 	path := usage.HistoryPath()
 	old, err := usage.LoadHistory(path)
@@ -279,27 +278,6 @@ func allDirs(projects []usage.Project) []string {
 	return dirs
 }
 
-// cwdProjects maps every cwd to the project name it should be filed under.
-// Two projects can share a base name, and the snapshot is keyed by name
-// forever, so a colliding name is qualified with its parent directory.
-func cwdProjects(projects []usage.Project) map[string]string {
-	count := map[string]int{}
-	for _, p := range projects {
-		count[p.Name]++
-	}
-	out := map[string]string{}
-	for _, p := range projects {
-		name := p.Name
-		if count[p.Name] > 1 {
-			name = filepath.Join(filepath.Base(filepath.Dir(p.Path)), p.Name)
-		}
-		for _, m := range p.Members {
-			out[m.Cwd] = name
-		}
-	}
-	return out
-}
-
 // ============ Scheduling ============
 
 const snapshotJobLabel = "com.claudeme.snapshot"
@@ -436,13 +414,4 @@ func snapshotStatus() {
 	if h.Updated != "" {
 		fmt.Println(DimStyle.Render("  last run " + h.Updated))
 	}
-}
-
-// bootoutLabel unloads one agent by label, falling back to the pre-11 verbs.
-func bootoutLabel(label, path string) {
-	target := fmt.Sprintf("gui/%d/%s", os.Getuid(), label)
-	if err := exec.Command("launchctl", "bootout", target).Run(); err == nil {
-		return
-	}
-	exec.Command("launchctl", "unload", path).Run()
 }

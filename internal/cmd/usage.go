@@ -19,13 +19,19 @@ func Projects() {
 	var query string
 	for _, a := range args {
 		switch a {
-		case "--cost", "-c":
+		case "--cost", "--costs", "-c":
 			withCost = true
 		case "--all", "-a":
 			showAll = true
 		case "--expand", "-e":
 			expand = true
 		default:
+			// Without this an unknown flag would silently become the search
+			// query and match nothing — the failure reads as "no projects".
+			if strings.HasPrefix(a, "-") {
+				fmt.Fprintf(os.Stderr, "unknown flag %q — try: claudeme projects [--cost] [--all] [--expand] [name]\n", a)
+				os.Exit(1)
+			}
 			query = a
 		}
 	}
@@ -346,6 +352,10 @@ func Usage() {
 				i++
 			}
 		default:
+			if strings.HasPrefix(args[i], "-") {
+				fmt.Fprintf(os.Stderr, "unknown flag %q — try: claudeme usage [--top N] [name]\n", args[i])
+				os.Exit(1)
+			}
 			query = args[i]
 		}
 	}

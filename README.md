@@ -164,6 +164,22 @@ claudeme usage phishen --top 50
 
 `usage` breaks spend down by day, model, skill, session, main-loop vs subagent, and agent type, and counts tool calls.
 
+### Heatmap
+
+`heatmap` is the same numbers as a GitHub contribution graph: one square per day, weeks left to right, darker where the day cost more.
+
+```sh
+claudeme heatmap                    # as much of a year as the terminal fits
+claudeme heatmap --all              # back to the first day with any activity
+claudeme heatmap --weeks 12
+claudeme heatmap --metric sessions  # or calls; cost is the default
+claudeme heatmap phishen            # scope to one project
+```
+
+Shades are quartiles of the non-zero days on screen, not of all history, so a quiet window still shows its own busy days. Under the grid: total, active days, the peak day, and the current and longest streaks.
+
+Days come from both sources — the snapshot history below and the transcripts on disk — taking the larger of the two per day, so the grid reaches past the retention window. `--live` reads the transcripts alone.
+
 Two things to know about the numbers:
 
 - **Cost is public list pricing.** On a Max/Pro subscription the real invoice is $0 — read these as "what this would have cost on the API". Models with no list price (synthetic messages, non-Anthropic) are excluded and reported at the bottom.
@@ -173,26 +189,30 @@ Cache tokens are priced at the input rate times 2× (1h write), 1.25× (5m write
 
 Every report prints the date range it actually covers. That range is bounded by what is still on disk, not by when you worked — see below.
 
-### Archiving transcripts
+### Digesting sessions
 
-Claude Code deletes transcripts from its projects tree after `cleanupPeriodDays` (30 by default), and deleted history is gone: nothing else on disk records what a session spent. `archive` moves old transcripts into a gzipped mirror at `~/.config/claudeme/shared/archive/`, where the cleanup can never reach them. Reports read both trees, so history gets deeper over time instead of truncating.
+A transcript records everything a session did; nobody reads one. `digest` turns each session into a structured summary — goal, outcome, work items, decisions, commands worth re-running, dead ends, next-session brief — and files it under `~/.config/claudeme/shared/history/<date>/<project>.json`. The summary is written by `gpt-5.6-luna` via `codex exec` against a fixed schema, so it is machine-readable, not prose.
 
 ```sh
-claudeme archive              # move transcripts older than 7d into the archive
-claudeme archive --days 30    # keep a month in the live tree instead
-claudeme archive --dry-run    # what would move, and how much space it uses
-claudeme archive --status     # schedule, plus the size of each tree
-claudeme archive --install    # run it daily at 04:00 (launchd, macOS)
-claudeme archive --uninstall  # remove the daily job
+claudeme digest                 # summarize yesterday's sessions
+claudeme digest --all           # every session on disk that has no digest yet
+claudeme digest --archived      # only the sessions that exist just in shared/archive/
+claudeme digest --limit 5       # do five and stop, for a first look
+claudeme digest --dry-run       # which sessions would be summarized
+claudeme digest --status        # schedule, what's digested, what's left
+claudeme digest --install       # run it daily at 05:00 (launchd, macOS)
+claudeme digest --uninstall     # remove the daily job
 ```
 
-Archived sessions are readable by `usage` but not resumable by Claude Code — the live tree is what `--resume` scans, so keep `--days` at least as long as you expect to resume something.
+It is keyed by session id, so it never re-summarizes a session and a failed or missed run self-heals on the next one. Each session is one `codex` call, about 30 seconds.
 
-Two things `archive` deliberately does not do: it never touches a transcript newer than the cutoff, and it never removes a transcript directory that was already empty — those empty directories are the last trace of projects whose history was deleted before archiving started.
+`digest` never moves or deletes a transcript. Claude Code owns their lifetime — it removes them after `cleanupPeriodDays`, and the digest is what survives.
+
+Needs `codex` on `PATH`, and `python3` for the distillation step.
 
 ### Long-term usage history
 
-`archive` keeps the transcripts; `snapshot` keeps only the numbers. It reads every transcript still on disk, extracts per-day aggregates, and upserts them into one file — `~/.config/claudeme/shared/usage-history.json`. Nothing is copied or moved, and the file is a few KB a day, so it can outlive any transcript by years.
+`digest` keeps what a session meant; `snapshot` keeps what it cost. It reads every transcript still on disk, extracts per-day aggregates, and upserts them into one file — `~/.config/claudeme/shared/usage-history.json`. Nothing is copied or moved, and the file is a few KB a day, so it can outlive any transcript by years.
 
 ```sh
 claudeme snapshot               # extract today's numbers (and backfill anything new)
