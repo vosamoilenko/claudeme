@@ -127,6 +127,8 @@ func printHelp() {
 	fmt.Println("  claudeme digest [--since D] [--all] [--archived] [--limit N] [-n]")
 	fmt.Println("                                      Summarize sessions into history/<date>/<project>.json")
 	fmt.Println("  claudeme digest --metrics-only [-n] Fill in timings/branches only — no model, no cost")
+	fmt.Println("  claudeme digest --tokens-only [-n]  Fill in the token ledger only — no model, no cost")
+	fmt.Println("  claudeme digest --prompts-only [-n] Record when each session ran, from the prompt history")
 	fmt.Println("  claudeme digest --install           Run it daily at 05:00 (launchd)")
 	fmt.Println("  claudeme digest --uninstall         Remove the daily job")
 	fmt.Println("  claudeme digest --status            Show schedule and what's digested")

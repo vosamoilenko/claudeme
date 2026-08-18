@@ -20,6 +20,9 @@ func PutDigest(root string, d *Digest) error {
 	// Updated only ever moves forward: a backfill re-filing an old session
 	// must not make the file look older than the last summary written to it.
 	stamps := []string{d.DigestedAt, d.MetricsAt}
+	if d.Prompts != nil {
+		stamps = append(stamps, d.Prompts.Last)
+	}
 	if d.Tokens != nil {
 		stamps = append(stamps, d.Tokens.ExtractedAt)
 	}

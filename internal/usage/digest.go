@@ -80,6 +80,12 @@ type Digest struct {
 	// epoch in effect on the day, so correcting a price re-values history
 	// rather than contradicting a stored number.
 	Tokens *Tokens `json:"tokens,omitempty"`
+
+	// Prompts is when the user typed into this session and how often, taken
+	// from Claude Code's never-rotated prompt history. It is the only source
+	// that outlives a transcript, so for thousands of old sessions it is the
+	// only evidence they happened at all.
+	Prompts *Prompts `json:"prompts,omitempty"`
 }
 
 // Usable reports whether a digest is worth keeping the transcript's deletion
@@ -119,6 +125,11 @@ func (d *Digest) HasMetrics() bool {
 // one — see PendingTokens.
 func (d *Digest) HasTokens() bool {
 	return d != nil && d.Tokens != nil && len(d.Tokens.Models)+len(d.Tokens.Sidechain) > 0
+}
+
+// HasPrompts reports whether the prompt window is on record.
+func (d *Digest) HasPrompts() bool {
+	return d != nil && d.Prompts != nil && d.Prompts.Count > 0
 }
 
 // DigestFile is every digested session for one project on one date, keyed by

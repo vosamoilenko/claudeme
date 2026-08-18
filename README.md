@@ -199,6 +199,7 @@ claudeme digest --all           # every session on disk that has no digest yet
 claudeme digest --archived      # only the sessions that exist just in shared/archive/
 claudeme digest --metrics-only  # timings and branches only — no model, no cost
 claudeme digest --tokens-only   # token ledger only — no model, no cost
+claudeme digest --prompts-only  # when each session ran, from the never-rotated prompt history
 claudeme digest --limit 5       # do five and stop, for a first look
 claudeme digest --dry-run       # which sessions would be summarized
 claudeme digest --status        # schedule, what's digested, what's left

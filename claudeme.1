@@ -164,7 +164,7 @@ project, matched as in \fBusage\fR; per-project session counts were never
 recorded in history, so \fB\-\-metric sessions\fR with a \fIQUERY\fR covers only
 the transcripts still on disk.
 .TP
-.B claudeme digest \fR[\fB\-\-since\fR \fIDATE\fR] [\fB\-\-all\fR] [\fB\-\-archived\fR] [\fB\-\-metrics\-only\fR] [\fB\-\-tokens\-only\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-dry\-run\fR] [\fB\-\-install\fR] [\fB\-\-uninstall\fR] [\fB\-\-status\fR]
+.B claudeme digest \fR[\fB\-\-since\fR \fIDATE\fR] [\fB\-\-all\fR] [\fB\-\-archived\fR] [\fB\-\-metrics\-only\fR] [\fB\-\-tokens\-only\fR] [\fB\-\-prompts\-only\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-dry\-run\fR] [\fB\-\-install\fR] [\fB\-\-uninstall\fR] [\fB\-\-status\fR]
 Summarize session transcripts into
 .IR ~/.config/claudeme/shared/history/<date>/<project>.json .
 Each session becomes one structured record — goal, outcome, work items,
@@ -186,14 +186,25 @@ untouched; a session it records is still owed a summary by a later run.
 \fB\-\-tokens\-only\fR likewise skips the model and records only the token
 ledger: calls, input, output and cache tokens per model and per day, stored
 unvalued so \fBclaudeme cost\fR can price them against any date's table.
-Both flags merge onto whatever record is already there and never disturb a
-summary.
+\fB\-\-prompts\-only\fR reads Claude Code's prompt history
+.RI ( ~/.config/claudeme/shared/history.jsonl )
+rather than any transcript, recording how many prompts a session held and the
+window they span. That file is never rotated, so this is the only pass that
+reaches sessions whose transcript was deleted months ago \(em it recovered
+3,442 otherwise unrecorded sessions back to 2026\-02\-10.
+The window brackets the prompts, not the session: the closing assistant turn
+runs past it, and a one\-prompt session has no span. It is a floor on duration,
+never the duration.
+All three flags merge onto whatever record is already there and never disturb a
+summary, and a record any of them creates is never usable enough to justify
+deleting a transcript.
 \fB\-\-dry\-run\fR lists what would be summarized and writes nothing.
 \fB\-\-status\fR shows the schedule, what is on record, and what is left.
 \fB\-\-install\fR schedules a daily run at 05:00 through launchd (macOS only);
 \fB\-\-uninstall\fR removes it, leaving the digests in place.
 Requires \fBcodex\fR and \fBpython3\fR on \fBPATH\fR; \fB\-\-metrics\-only\fR
-needs only \fBpython3\fR and \fB\-\-tokens\-only\fR needs neither.
+needs only \fBpython3\fR; \fB\-\-tokens\-only\fR and \fB\-\-prompts\-only\fR
+need neither.
 .TP
 .B claudeme cost \fR[\fB\-\-at\fR \fIDATE\fR] [\fB\-\-actual\fR] [\fB\-\-provider\fR \fIP\fR] [\fB\-\-by\fR \fIDIM\fR] [\fB\-\-json\fR]
 Value the stored token ledgers. Tokens are kept as counted facts and prices as

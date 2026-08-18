@@ -67,3 +67,20 @@ split = [d for d, v in h['days'].items() if v.get('cacheWrite1h') or v.get('cach
 print(f'{len(h["days"])} days recorded, {len(split)} with the 1h/5m cache split')
 PY
 ```
+
+## Backfill the prompt windows
+
+Claude Code's prompt history (`shared/history.jsonl`) is never rotated, so it is the only
+source that reaches sessions whose transcripts were deleted months ago.
+
+```bash
+claudeme digest --prompts-only -n   # what it would do
+claudeme digest --prompts-only      # do it
+```
+
+Result 2026-08-18: 4,970 sessions in 6 s, 0 failures — **3,442 of them had no record of
+any kind**, extending `history/` from 41 to 178 date directories (2026-02-10 → 2026-08-18,
+8.4 MB). Idempotent: a session is only re-filed when its prompt count changed.
+
+Records it creates carry no summary and no tokens, so they can never gate a transcript
+deletion. They answer *when* a session ran, not what it did.

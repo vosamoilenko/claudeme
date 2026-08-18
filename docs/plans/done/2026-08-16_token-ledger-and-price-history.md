@@ -309,6 +309,22 @@ Measured, not assumed — a read-only sweep of all 2,586 rollouts ran before blo
 - `cost` reads below `history` ($5,177.84 vs $6,574.95) by exactly the 409 digested
   sessions whose transcripts are already deleted. Reported as coverage, not hidden.
 
+### Follow-on, not in this plan
+
+- **`history.jsonl` ingestion (`digest --prompts-only`).** The plan never looked at
+  Claude Code's prompt history. It holds every prompt ever typed with a timestamp,
+  project and session id, and is **never rotated** — 4,970 sessions back to 2026-02-10,
+  against 1,327 surviving transcripts and 1,665 digests. Backfilling it added **3,442
+  sessions that had no record at all** and five months of history no other source
+  retains. It carries no model and no tokens, so it cannot extend `claudeme cost`; it
+  answers when a session ran and on what. See
+  [`architecture/2026-08-18_session-digest.md`](../../architecture/2026-08-18_session-digest.md).
+
+  This also forced `IndexDigests`: project names come from surviving transcripts, so a
+  session whose transcript is gone can resolve to a different name than its record was
+  filed under. Writing blind produced 3,483 records instead of 3,442 — 41 sessions split
+  in two. The index pins each session to where it already lives.
+
 ### Left open
 
 - **Q1 (18-day semantic backfill) is untouched**, as the plan directed — independent of

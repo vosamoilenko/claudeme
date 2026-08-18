@@ -22,6 +22,7 @@ func Digest() {
 	archivedOnly := false
 	metricsOnly := false
 	tokensOnly := false
+	promptsOnly := false
 	dryRun := false
 	action := "run"
 
@@ -64,6 +65,11 @@ func Digest() {
 			// Same shape as --metrics-only: pure parsing, every date, no model.
 			tokensOnly = true
 			since = ""
+		case "--prompts-only":
+			// Reads Claude Code's prompt history rather than any transcript,
+			// so it reaches sessions whose transcript no longer exists.
+			promptsOnly = true
+			since = ""
 		case "--dry-run", "-n":
 			dryRun = true
 		case "--install":
@@ -86,9 +92,13 @@ func Digest() {
 	case "status":
 		digestStatus()
 	default:
-		if metricsOnly && tokensOnly {
-			fmt.Fprintln(os.Stderr, "--metrics-only and --tokens-only are separate passes; run them one at a time")
+		if countTrue(metricsOnly, tokensOnly, promptsOnly) > 1 {
+			fmt.Fprintln(os.Stderr, "--metrics-only, --tokens-only and --prompts-only are separate passes; run them one at a time")
 			os.Exit(1)
+		}
+		if promptsOnly {
+			runPromptsOnly(dryRun, limit)
+			return
 		}
 		runDigest(since, limit, dryRun, archivedOnly, metricsOnly, tokensOnly)
 	}
@@ -371,6 +381,125 @@ func runTokensOnly(root string, pending []usage.Candidate) {
 			note += " (" + strings.Join(unpriced, ",") + " unpriced)"
 		}
 		fmt.Println(DimStyle.Render(note))
+	}
+
+	fmt.Printf("%s %s\n", HeaderStyle.Render("Digest"),
+		DimStyle.Render(fmt.Sprintf("%d done, %d failed, %s elapsed",
+			ok, failed, time.Since(start).Round(time.Second))))
+	fmt.Println(DimStyle.Render("  " + shortenHome(root)))
+	if failed > 0 {
+		os.Exit(1)
+	}
+}
+
+// countTrue counts the set flags, so the mutually exclusive passes can say so
+// once rather than in three pairwise checks.
+func countTrue(flags ...bool) int {
+	n := 0
+	for _, f := range flags {
+		if f {
+			n++
+		}
+	}
+	return n
+}
+
+// runPromptsOnly files each session's prompt window from Claude Code's prompt
+// history. It is the one pass that does not read a transcript, which is the
+// whole point: the prompt history is never rotated, so it reaches thousands of
+// sessions whose transcripts were deleted long ago.
+//
+// A record it creates carries no summary and no tokens. That is honest — it is
+// evidence a session happened and when, not an account of what it did.
+func runPromptsOnly(dryRun bool, limit int) {
+	root := usage.DigestRoot()
+
+	sessions, err := usage.ReadPromptHistory(usage.PromptHistoryPath(), usage.PromptHistoryPath()+".bak")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	// Project names come from the transcripts that still exist, so a session
+	// whose transcript is gone still files under the same name its surviving
+	// siblings do rather than a bare basename.
+	projects, err := usage.Discover(usage.Roots())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	names := usage.ProjectNames(projects)
+
+	// A session already on record keeps its existing placement. Project names
+	// are derived from the transcripts that survive, so a session whose
+	// transcript is gone can resolve to a different name than the one its
+	// record was filed under — and writing it there would split one session
+	// into two records.
+	placed, err := usage.IndexDigests(root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	var todo []usage.Candidate
+	var windows []usage.Prompts
+	fresh := 0
+	for _, s := range sessions {
+		c := s.Candidate(names)
+		if p, ok := placed[s.Session]; ok {
+			c.Date, c.Project = p.Date, p.Project
+		}
+		d, err := usage.GetDigest(root, c.Date, c.Project, c.Session)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s: %v\n", c.Session, err)
+			continue
+		}
+		if d != nil && d.HasPrompts() && d.Prompts.Count == s.Prompts.Count {
+			continue // already on record and unchanged
+		}
+		if d == nil {
+			fresh++
+		}
+		todo = append(todo, c)
+		windows = append(windows, s.Prompts)
+	}
+
+	dropped := 0
+	if limit > 0 && len(todo) > limit {
+		dropped = len(todo) - limit
+		todo, windows = todo[:limit], windows[:limit]
+	}
+
+	fmt.Printf("%s %s\n", HeaderStyle.Render("Digest"),
+		DimStyle.Render(fmt.Sprintf("%d session%s to do from the prompt history, %d of them new",
+			len(todo), plural(len(todo)), fresh)))
+	fmt.Println(DimStyle.Render(fmt.Sprintf("  %d session%s in %s",
+		len(sessions), plural(len(sessions)), shortenHome(usage.PromptHistoryPath()))))
+	if dropped > 0 {
+		fmt.Println(DimStyle.Render(fmt.Sprintf("  --limit left %d for a later run", dropped)))
+	}
+	if len(todo) == 0 {
+		return
+	}
+	if dryRun {
+		for i, c := range todo {
+			fmt.Printf("  %s  %s  %s\n", DimStyle.Render(c.Date),
+				pad(NameStyle.Render(truncateUTF8(c.Project, 28)), 28),
+				DimStyle.Render(fmt.Sprintf("%d prompt%s", windows[i].Count, plural(windows[i].Count))))
+		}
+		fmt.Println(DimStyle.Render("  dry run — nothing written"))
+		return
+	}
+
+	ok, failed := 0, 0
+	start := time.Now()
+	for i, c := range todo {
+		if err := usage.PutPrompts(root, c, windows[i]); err != nil {
+			failed++
+			fmt.Fprintf(os.Stderr, "  %s: %v\n", c.Session, err)
+			continue
+		}
+		ok++
 	}
 
 	fmt.Printf("%s %s\n", HeaderStyle.Render("Digest"),

@@ -199,8 +199,8 @@ func (m Model) View() string {
 	return "\n" + m.list.View() + "\n" + helpStyle.Render("  enter: select  d: delete  /: filter  q: quit") + "\n"
 }
 
-func (m Model) Choice() string    { return m.choice }
-func (m Model) Action() Action    { return m.action }
+func (m Model) Choice() string       { return m.choice }
+func (m Model) Action() Action       { return m.action }
 func (m Model) DeleteTarget() string { return m.deleteTarget }
 
 func min(a, b int) int {

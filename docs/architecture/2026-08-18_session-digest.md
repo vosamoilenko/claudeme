@@ -4,20 +4,57 @@
 `~/.config/claudeme/shared/history/<date>/<project>.json`, one record per session keyed
 by session id. Transcripts are only ever read — Claude Code owns their lifetime.
 
-## Two halves of a record
+## Four independent halves of a record
 
-Each record carries two independent payloads, both raw JSON because the producer owns
-the shape:
+A record is assembled by four passes that never depend on each other. Each writes its own
+field and leaves the rest untouched, so any one can run, fail or be backfilled alone:
 
-| Field | Produced by | Cost | Re-derivable |
-| --- | --- | --- | --- |
-| `summary` | `summarize.sh` → codex (`gpt-5.6-luna`) | ~30 s and a model call per session | **No** — the transcript may be gone |
-| `metrics` | `distill.py --metrics` | ~0.04 s, no network | **Yes** — pure function of the transcript |
+| Field | Produced by | Source | Cost | Survives transcript deletion |
+| --- | --- | --- | --- | --- |
+| `summary` | `summarize.sh` → codex (`gpt-5.6-luna`) | transcript | ~30 s + a model call | **No** — must be written while the transcript lives |
+| `metrics` | `distill.py --metrics` | transcript | ~0.04 s | No |
+| `tokens` | `SessionTokens` | transcript | ~7 ms | No |
+| `prompts` | `ReadPromptHistory` | `history.jsonl` | ~1 ms | **Yes** — the only pass that reaches deleted sessions |
+
+Only `summary` is irreplaceable. The other three are pure functions of a file, so a wrong
+one is fixed by re-running rather than by migrating.
 
 `metrics` holds `session_id`, `title`, `cwd`, `branches`, `started`, `ended`, `version`,
 `skills_used` and a 26-field `metrics` block (wall time, turns, tool calls, tokens, files
 touched). `metricsAt` records when it was derived, separate from `digestedAt`, because
 the two happen in different runs.
+
+## Prompt history: the source that outlives everything
+
+Claude Code appends every prompt the user types to
+`~/.config/claudeme/shared/history.jsonl` — timestamp in epoch ms, project path, session
+id — and **never rotates it**. Measured 2026-08-18:
+
+| | transcripts | digests | prompt history |
+| --- | --- | --- | --- |
+| sessions | 1,327 | 1,665 | **4,970** |
+| earliest | 2026-07-27 | 2026-07-03 | **2026-02-10** |
+
+Backfilling it created **3,442 records for sessions that had no trace at all**, taking
+`history/` from 41 to 178 date directories (8.4 MB). `history.jsonl.bak` is a strict
+subset — the file has never been trimmed, so nothing older exists to recover.
+
+It carries no model and no tokens, so it can never extend `claudeme cost`. What it
+answers is *when a session ran and on what*.
+
+`Prompts{Count, First, Last}` brackets the **prompts, not the session**: the closing
+assistant turn runs past `Last`, and a one-prompt session has no span at all (`Last` is
+omitted rather than set equal to `First`, so unknown is not reported as zero). Treat it
+as a floor on duration. Median span 12 min, p90 100 min.
+
+**Placement matters.** Project names are derived from the transcripts that still exist, so
+a session whose transcript is gone can resolve to a different name than the one its record
+was filed under — writing it there would split one session into two records. `IndexDigests`
+maps every session to where it already lives, and the prompt pass writes there. Without it
+the backfill created 3,483 records instead of 3,442; with it, 5,107 records for 5,107
+distinct sessions, zero duplicates.
+
+## Which half gates a delete
 
 That asymmetry is why `Digest.Usable()` — the gate on deleting a transcript — reads
 `summary` alone. A metrics-only record must never justify destroying the only copy of
@@ -30,12 +67,15 @@ file:
 
 - `Pending` → sessions with no `summary`. Drives the default run and the daily 05:00 job.
 - `PendingMetrics` → sessions with no `metrics`. Drives `--metrics-only`.
+- `PendingTokens` → sessions with no `tokens`. Drives `--tokens-only`.
+- `--prompts-only` needs no predicate: it iterates the prompt history rather than the
+  transcripts, and re-files a session only when its prompt count has changed.
 
 They are independent: a session summarized before metrics existed is pending for
 `--metrics-only`, and a metrics-only record is still pending for a summary. `Settled`
 holds back transcripts written to in the last hour in both modes.
 
-`--metrics-only` merges onto the record already there — the summary, `model` and
+All the `--*-only` passes merge onto the record already there — the summary, `model` and
 `digestedAt` of an already-digested session are left untouched.
 
 ## Filing date
@@ -57,6 +97,11 @@ from the directory name.
 
 ## Amendments
 
+- 2026-08-18 — `prompts` backfilled from `history.jsonl`, adding 3,442 sessions and five
+  months of history that no other source retains. `IndexDigests` added to keep one
+  session in one place.
+- 2026-08-18 — `tokens` added by the token-ledger work; see
+  [`2026-08-18_token-ledger-and-prices.md`](2026-08-18_token-ledger-and-prices.md).
 - 2026-08-18 — `metrics`/`metricsAt` persisted on every digest, plus
   `digest --metrics-only` to backfill. Before this, `distill.py` computed the metrics on
   every run and `summarize.sh` deleted them with its temp dir.

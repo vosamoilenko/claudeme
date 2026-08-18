@@ -238,3 +238,49 @@ func pendingBy(root string, cands []Candidate, done func(*Digest) bool) ([]Candi
 	}
 	return out, nil
 }
+
+// Placement is where a session's record already lives: its date and project
+// directory. A session is keyed by id inside one file, so the same session
+// filed under two project names would become two records of one thing —
+// which is exactly what happens when a project's name is derived from a cwd
+// whose transcripts have since been deleted.
+type Placement struct {
+	Date    string
+	Project string
+}
+
+// IndexDigests maps every session already on record to where it is filed, so
+// a writer working from a source other than a transcript can put its facts on
+// the existing record rather than beside it.
+func IndexDigests(root string) (map[string]Placement, error) {
+	out := map[string]Placement{}
+	days, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	for _, day := range days {
+		if !day.IsDir() {
+			continue
+		}
+		files, err := os.ReadDir(filepath.Join(root, day.Name()))
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if !strings.HasSuffix(f.Name(), ".json") {
+				continue
+			}
+			df, err := LoadDigest(filepath.Join(root, day.Name(), f.Name()))
+			if err != nil {
+				continue
+			}
+			for id := range df.Sessions {
+				out[id] = Placement{Date: df.Date, Project: df.Project}
+			}
+		}
+	}
+	return out, nil
+}
