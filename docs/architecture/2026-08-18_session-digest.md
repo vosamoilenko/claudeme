@@ -20,9 +20,15 @@ Only `summary` is irreplaceable. The other three are pure functions of a file, s
 one is fixed by re-running rather than by migrating.
 
 `metrics` holds `session_id`, `title`, `cwd`, `branches`, `started`, `ended`, `version`,
-`skills_used` and a 26-field `metrics` block (wall time, turns, tool calls, tokens, files
-touched). `metricsAt` records when it was derived, separate from `digestedAt`, because
-the two happen in different runs.
+`skills_used` and a `metrics` block (wall time, turns, tool calls, files touched).
+`metricsAt` records when it was derived, separate from `digestedAt`, because the two
+happen in different runs.
+
+It carries no token counts. `distill.py` computes some, but by summing every assistant
+record's usage block with no dedupe — 1.5-1.8x the truth, because one API call can land as
+several records sharing a requestId. `StripNaiveTokens` drops `tokens`, `cache_hit_rate`
+and `subagent_output_tokens` in `PutDigest`, so the ledger in `tokens` is the only token
+answer a record can give.
 
 ## Prompt history: the source that outlives everything
 
@@ -105,3 +111,6 @@ from the directory name.
 - 2026-08-18 — `metrics`/`metricsAt` persisted on every digest, plus
   `digest --metrics-only` to backfill. Before this, `distill.py` computed the metrics on
   every run and `summarize.sh` deleted them with its temp dir.
+- 2026-08-18 — `distill.py`'s undeduped token counts stripped from `metrics` in
+  `PutDigest`, and swept from 1,312 existing records by `PruneNaiveTokens` (run by
+  `--metrics-only`). They contradicted `tokens` and were inflated 1.5-1.8x.

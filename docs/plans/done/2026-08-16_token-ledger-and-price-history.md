@@ -334,3 +334,45 @@ Measured, not assumed — a read-only sweep of all 2,586 rollouts ran before blo
 - **Historical Anthropic epochs.** The seed dates everything to 2000-01-01, so today's
   prices are applied to all of history. The machinery to fix this is in place; the
   numbers are not.
+
+### Amendment 2026-08-18 — distill.py's token counts are superseded, and were wrong
+
+The metrics backfill (`docs/plans/2026-08-18_persist-distill-metrics.md`) persisted
+`distill.py --metrics` verbatim, which includes its own `tokens` block. Once block 5
+landed, every record carried **two contradictory token counts**, and the wrong one sat
+beside the timings that make the rest of `metrics` worth having.
+
+`distill.py` sums the usage block of every assistant record. It has no dedupe rule, while
+`SessionTokens` uses the requestId-else-uuid rule `usage.go` has always used. Measured on
+session `1b8df218` (mitarbeiterportal, 2026-08-17) — 123 assistant records carrying usage,
+**44 of them repeat a requestId**:
+
+| | distill.py | ledger | ratio |
+| --- | ---: | ---: | ---: |
+| output | 67,883 | 38,080 | 1.78× |
+| input | 246 | 158 | 1.56× |
+| cache read | 12,352,931 | 8,033,269 | 1.54× |
+| cache write | 251,836 | 141,982 | 1.77× |
+
+`cache_hit_rate` is a ratio of two inflated numbers and `subagent_output_tokens` is summed
+the same way, so all three fields go.
+
+Resolution — `internal/usage/metrics.go`:
+
+- `StripNaiveTokens` drops those three fields from a `--metrics` payload, leaving the
+  timings, branches and shape counts untouched. Unknown shapes pass through unchanged.
+- It is applied in `PutDigest`, the single write funnel, so no future write can reintroduce
+  them regardless of caller.
+- `PruneNaiveTokens` sweeps records written before this. It reads and writes only what is
+  on disk — no transcript reopened, no model called — and is idempotent. The
+  `--metrics-only` pass runs it on the way in and reports the tally.
+
+Verified on the real corpus: **1,312 records across 132 files cleaned in one pass**, second
+pass reports nothing, 1,315 records with metrics and 0 still carrying the naive counts.
+`1b8df218` keeps `started`, `ended` and `branches: ["feat/DP-3282", "sandbox"]`, and its
+only token record is now the ledger's `out: 38,080`.
+
+Note for anyone reading old numbers: **every token figure derived from `metrics.tokens`
+before 2026-08-18 is inflated by roughly 1.5–1.8×.** Nothing in the Go tree ever read
+those fields — `usage.go` and `cost` have always counted independently — so no stored cost
+or usage report is affected.

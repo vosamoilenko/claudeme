@@ -5,9 +5,17 @@ import "fmt"
 // PutDigest files one session into history/<date>/<project>.json, creating the
 // file on first use. Existing sessions in the file are preserved; the same
 // session digested twice replaces itself rather than appearing twice.
+//
+// Every write passes through StripNaiveTokens, so distill.py's undeduped token
+// counts never reach disk to contradict the ledger in Tokens. This is the one
+// funnel every writer goes through, which is why the normalization lives here
+// rather than in each caller.
 func PutDigest(root string, d *Digest) error {
 	if d.Session == "" || d.Date == "" {
 		return fmt.Errorf("digest needs a session and a date, got %q/%q", d.Session, d.Date)
+	}
+	if cleaned, changed := StripNaiveTokens(d.Metrics); changed {
+		d.Metrics = cleaned
 	}
 	path := digestPathIn(root, d.Date, d.Project)
 	f, err := LoadDigest(path)

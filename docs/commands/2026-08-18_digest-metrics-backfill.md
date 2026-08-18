@@ -31,3 +31,17 @@ for f in glob.glob(root + '/*/*.json'):
 print(f'{tot} records, {sm} with summary, {me} with metrics')
 PY
 ```
+
+## It also cleans as it goes
+
+Each real run (not `-n`) first sweeps every record whose `metrics` still carries
+`distill.py`'s undeduped `tokens`, `cache_hit_rate` and `subagent_output_tokens` — counts
+superseded by the `tokens` ledger and inflated 1.5-1.8x by counting one API call once per
+assistant record. It reads and writes only what is on disk, so it costs a pass over a few
+megabytes and reports:
+
+```
+  dropped superseded token counts from 1312 records in 132 files
+```
+
+Idempotent — once the corpus is clean the line stops appearing.

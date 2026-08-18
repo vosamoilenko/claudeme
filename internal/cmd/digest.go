@@ -107,6 +107,24 @@ func Digest() {
 func runDigest(since string, limit int, dryRun, archivedOnly, metricsOnly, tokensOnly bool) {
 	root := usage.DigestRoot()
 
+	// The first metrics backfill ran before the token ledger existed and wrote
+	// distill.py's undeduped counts to disk. They are superseded, not merely
+	// stale, so the metrics pass clears them on its way in. Idempotent: once
+	// the corpus is clean this reports nothing and costs one pass over a few
+	// megabytes.
+	if metricsOnly && !dryRun {
+		files, records, err := usage.PruneNaiveTokens(root)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if records > 0 {
+			fmt.Println(DimStyle.Render(fmt.Sprintf(
+				"  dropped superseded token counts from %d record%s in %d file%s",
+				records, plural(records), files, plural(files))))
+		}
+	}
+
 	cands, err := usage.ScanSessions(usage.Roots())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
