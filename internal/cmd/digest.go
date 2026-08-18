@@ -20,6 +20,8 @@ func Digest() {
 	since := yesterday()
 	limit := 0
 	archivedOnly := false
+	metricsOnly := false
+	tokensOnly := false
 	dryRun := false
 	action := "run"
 
@@ -52,6 +54,16 @@ func Digest() {
 				limit = n
 				i++
 			}
+		case "--metrics-only":
+			// Metrics come out of distill.py alone: no codex, no network, no
+			// usage budget. The whole corpus is minutes, so the default
+			// window would only get in the way.
+			metricsOnly = true
+			since = ""
+		case "--tokens-only":
+			// Same shape as --metrics-only: pure parsing, every date, no model.
+			tokensOnly = true
+			since = ""
 		case "--dry-run", "-n":
 			dryRun = true
 		case "--install":
@@ -74,11 +86,15 @@ func Digest() {
 	case "status":
 		digestStatus()
 	default:
-		runDigest(since, limit, dryRun, archivedOnly)
+		if metricsOnly && tokensOnly {
+			fmt.Fprintln(os.Stderr, "--metrics-only and --tokens-only are separate passes; run them one at a time")
+			os.Exit(1)
+		}
+		runDigest(since, limit, dryRun, archivedOnly, metricsOnly, tokensOnly)
 	}
 }
 
-func runDigest(since string, limit int, dryRun, archivedOnly bool) {
+func runDigest(since string, limit int, dryRun, archivedOnly, metricsOnly, tokensOnly bool) {
 	root := usage.DigestRoot()
 
 	cands, err := usage.ScanSessions(usage.Roots())
@@ -106,7 +122,14 @@ func runDigest(since string, limit int, dryRun, archivedOnly bool) {
 		cands = kept
 	}
 
-	pending, err := usage.Pending(root, cands)
+	pick := usage.Pending
+	switch {
+	case metricsOnly:
+		pick = usage.PendingMetrics
+	case tokensOnly:
+		pick = usage.PendingTokens
+	}
+	pending, err := pick(root, cands)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -124,6 +147,12 @@ func runDigest(since string, limit int, dryRun, archivedOnly bool) {
 	}
 	if archivedOnly {
 		scope = "archived only"
+	}
+	if metricsOnly {
+		scope += ", metrics only"
+	}
+	if tokensOnly {
+		scope += ", tokens only"
 	}
 	dropped := 0
 	if limit > 0 && len(pending) > limit {
@@ -159,6 +188,15 @@ func runDigest(since string, limit int, dryRun, archivedOnly bool) {
 	}
 	defer runner.Close()
 
+	if metricsOnly {
+		runMetricsOnly(root, runner, pending)
+		return
+	}
+	if tokensOnly {
+		runTokensOnly(root, pending)
+		return
+	}
+
 	// A bulk run notifies once, at the end. Per-session popups are right for
 	// the daily job (1–2 sessions, and a silent miss should be visible) and
 	// plainly wrong for a backfill of hundreds.
@@ -171,6 +209,23 @@ func runDigest(since string, limit int, dryRun, archivedOnly bool) {
 		fmt.Printf("  %s %s %s ",
 			DimStyle.Render(fmt.Sprintf("[%d/%d]", i+1, len(pending))),
 			DimStyle.Render(c.Date), pad(NameStyle.Render(truncateUTF8(c.Project, 24)), 24))
+
+		// Metrics first: it is free and deterministic, so a summary that
+		// fails afterwards costs nothing extra. A metrics failure is not
+		// fatal — the session is still worth summarizing without them.
+		metrics, err := runner.Metrics(c.Path)
+		if err != nil {
+			metrics = nil
+			fmt.Fprintf(os.Stderr, "    %s: metrics: %v\n", c.Session, err)
+		}
+
+		tokens, err := usage.SessionTokens(c.Path)
+		if err != nil {
+			tokens = nil
+			fmt.Fprintf(os.Stderr, "    %s: tokens: %v\n", c.Session, err)
+		} else {
+			tokens.ExtractedAt = time.Now().UTC().Format(time.RFC3339)
+		}
 
 		summary, err := runner.Summarize(c.Path)
 		if err != nil {
@@ -188,6 +243,11 @@ func runDigest(since string, limit int, dryRun, archivedOnly bool) {
 			Model:      usage.DigestModel,
 			DigestedAt: time.Now().UTC().Format(time.RFC3339),
 			Summary:    summary,
+			Metrics:    metrics,
+			Tokens:     tokens,
+		}
+		if metrics != nil {
+			d.MetricsAt = d.DigestedAt
 		}
 		if err := usage.PutDigest(root, d); err != nil {
 			failed++
@@ -209,6 +269,115 @@ func runDigest(since string, limit int, dryRun, archivedOnly bool) {
 	if failed > 0 {
 		// Not fatal: a failed session keeps no record, so the next run retries
 		// it. Exit non-zero so a scheduled run shows up as failed in its log.
+		os.Exit(1)
+	}
+}
+
+// runMetricsOnly fills in distill.py's account of each session without ever
+// calling the model. A session already summarized keeps its summary: the
+// metrics are merged onto the record that is there. A session never digested
+// gets a metrics-only record, which Pending still reports as owing a summary
+// and Usable() still refuses to let gate a delete.
+func runMetricsOnly(root string, runner *usage.Runner, pending []usage.Candidate) {
+	ok, failed := 0, 0
+	start := time.Now()
+	for i, c := range pending {
+		fmt.Printf("  %s %s %s ",
+			DimStyle.Render(fmt.Sprintf("[%d/%d]", i+1, len(pending))),
+			DimStyle.Render(c.Date), pad(NameStyle.Render(truncateUTF8(c.Project, 24)), 24))
+
+		metrics, err := runner.Metrics(c.Path)
+		if err != nil {
+			failed++
+			fmt.Println(WarnStyle.Render("failed"))
+			fmt.Fprintf(os.Stderr, "    %s: %v\n", c.Session, err)
+			continue
+		}
+
+		d, err := usage.GetDigest(root, c.Date, c.Project, c.Session)
+		if err != nil {
+			failed++
+			fmt.Println(WarnStyle.Render("unreadable"))
+			fmt.Fprintf(os.Stderr, "    %s: %v\n", c.Session, err)
+			continue
+		}
+		if d == nil {
+			d = &usage.Digest{
+				Session:    c.Session,
+				Date:       c.Date,
+				Cwd:        c.Cwd,
+				Project:    c.Project,
+				Transcript: c.Path,
+			}
+		}
+		d.Metrics = metrics
+		d.MetricsAt = time.Now().UTC().Format(time.RFC3339)
+
+		if err := usage.PutDigest(root, d); err != nil {
+			failed++
+			fmt.Println(WarnStyle.Render("unwritable"))
+			fmt.Fprintf(os.Stderr, "    %s: %v\n", c.Session, err)
+			continue
+		}
+		ok++
+		state := "metrics"
+		if d.HasSummary() {
+			state = "metrics + kept summary"
+		}
+		fmt.Println(DimStyle.Render(state))
+	}
+
+	fmt.Printf("%s %s\n", HeaderStyle.Render("Digest"),
+		DimStyle.Render(fmt.Sprintf("%d done, %d failed, %s elapsed",
+			ok, failed, time.Since(start).Round(time.Second))))
+	fmt.Println(DimStyle.Render("  " + shortenHome(root)))
+	if failed > 0 {
+		os.Exit(1)
+	}
+}
+
+// runTokensOnly extracts each session's token ledger. Pure parsing — no
+// model, no network — so it runs over every session that has no ledger yet,
+// whatever state the rest of its record is in.
+func runTokensOnly(root string, pending []usage.Candidate) {
+	ok, failed := 0, 0
+	start := time.Now()
+	for i, c := range pending {
+		fmt.Printf("  %s %s %s ",
+			DimStyle.Render(fmt.Sprintf("[%d/%d]", i+1, len(pending))),
+			DimStyle.Render(c.Date), pad(NameStyle.Render(truncateUTF8(c.Project, 24)), 24))
+
+		t, err := usage.SessionTokens(c.Path)
+		if err != nil {
+			failed++
+			fmt.Println(WarnStyle.Render("failed"))
+			fmt.Fprintf(os.Stderr, "    %s: %v\n", c.Session, err)
+			continue
+		}
+		t.ExtractedAt = time.Now().UTC().Format(time.RFC3339)
+
+		if err := usage.PutTokens(root, c, t); err != nil {
+			failed++
+			fmt.Println(WarnStyle.Render("unwritable"))
+			fmt.Fprintf(os.Stderr, "    %s: %v\n", c.Session, err)
+			continue
+		}
+		ok++
+		total := t.Total()
+		micros, unpriced := t.Cost()
+		note := fmt.Sprintf("%s calls, %s in, %s out, %s",
+			comma(total.Calls), comma(total.In), comma(total.Out), money(micros))
+		if len(unpriced) > 0 {
+			note += " (" + strings.Join(unpriced, ",") + " unpriced)"
+		}
+		fmt.Println(DimStyle.Render(note))
+	}
+
+	fmt.Printf("%s %s\n", HeaderStyle.Render("Digest"),
+		DimStyle.Render(fmt.Sprintf("%d done, %d failed, %s elapsed",
+			ok, failed, time.Since(start).Round(time.Second))))
+	fmt.Println(DimStyle.Render("  " + shortenHome(root)))
+	if failed > 0 {
 		os.Exit(1)
 	}
 }

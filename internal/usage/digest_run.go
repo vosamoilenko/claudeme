@@ -146,3 +146,37 @@ func lastLines(s string, n int) string {
 	}
 	return strings.Join(lines, " | ")
 }
+
+// Metrics runs distill.py alone over one transcript and returns its
+// deterministic account of the session — started/ended, branches, cwd, title
+// and the counted totals. No model call, so it costs nothing but the parse.
+//
+// Archived transcripts take the same gzip detour Summarize takes: distill.py
+// reads plain JSONL, and teaching it gzip would fork the script from the spike.
+func (r *Runner) Metrics(transcript string) (json.RawMessage, error) {
+	src := transcript
+	if strings.HasSuffix(transcript, gzExt) {
+		plain, err := r.decompress(transcript)
+		if err != nil {
+			return nil, err
+		}
+		defer os.Remove(plain)
+		src = plain
+	}
+
+	cmd := exec.Command("python3", filepath.Join(r.dir, "distill.py"), src, "--metrics")
+	cmd.Dir = r.dir
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("%w: %s", err, lastLines(stderr.String(), 3))
+	}
+
+	data := []byte(stdout.String())
+	if !json.Valid(data) {
+		return nil, fmt.Errorf("distill.py wrote invalid JSON for %s", filepath.Base(transcript))
+	}
+	return json.RawMessage(data), nil
+}

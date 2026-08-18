@@ -197,6 +197,8 @@ A transcript records everything a session did; nobody reads one. `digest` turns 
 claudeme digest                 # summarize yesterday's sessions
 claudeme digest --all           # every session on disk that has no digest yet
 claudeme digest --archived      # only the sessions that exist just in shared/archive/
+claudeme digest --metrics-only  # timings and branches only — no model, no cost
+claudeme digest --tokens-only   # token ledger only — no model, no cost
 claudeme digest --limit 5       # do five and stop, for a first look
 claudeme digest --dry-run       # which sessions would be summarized
 claudeme digest --status        # schedule, what's digested, what's left

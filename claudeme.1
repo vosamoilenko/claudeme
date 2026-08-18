@@ -164,7 +164,7 @@ project, matched as in \fBusage\fR; per-project session counts were never
 recorded in history, so \fB\-\-metric sessions\fR with a \fIQUERY\fR covers only
 the transcripts still on disk.
 .TP
-.B claudeme digest \fR[\fB\-\-since\fR \fIDATE\fR] [\fB\-\-all\fR] [\fB\-\-archived\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-dry\-run\fR] [\fB\-\-install\fR] [\fB\-\-uninstall\fR] [\fB\-\-status\fR]
+.B claudeme digest \fR[\fB\-\-since\fR \fIDATE\fR] [\fB\-\-all\fR] [\fB\-\-archived\fR] [\fB\-\-metrics\-only\fR] [\fB\-\-tokens\-only\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-dry\-run\fR] [\fB\-\-install\fR] [\fB\-\-uninstall\fR] [\fB\-\-status\fR]
 Summarize session transcripts into
 .IR ~/.config/claudeme/shared/history/<date>/<project>.json .
 Each session becomes one structured record — goal, outcome, work items,
@@ -178,11 +178,39 @@ The default window is yesterday; \fB\-\-since\fR widens it, \fB\-\-all\fR covers
 every session on disk, \fB\-\-archived\fR covers only the gzipped ones under
 .IR ~/.config/claudeme/shared/archive ,
 and \fB\-\-limit\fR stops after \fIN\fR sessions.
+\fB\-\-metrics\-only\fR skips the model entirely and records just the
+deterministic half — when the session ran, on which branches, and the counted
+totals from \fBdistill.py\fR. It covers every date, adds the \fBmetrics\fR field
+to records summarized before it existed, and leaves an existing summary
+untouched; a session it records is still owed a summary by a later run.
+\fB\-\-tokens\-only\fR likewise skips the model and records only the token
+ledger: calls, input, output and cache tokens per model and per day, stored
+unvalued so \fBclaudeme cost\fR can price them against any date's table.
+Both flags merge onto whatever record is already there and never disturb a
+summary.
 \fB\-\-dry\-run\fR lists what would be summarized and writes nothing.
 \fB\-\-status\fR shows the schedule, what is on record, and what is left.
 \fB\-\-install\fR schedules a daily run at 05:00 through launchd (macOS only);
 \fB\-\-uninstall\fR removes it, leaving the digests in place.
-Requires \fBcodex\fR and \fBpython3\fR on \fBPATH\fR.
+Requires \fBcodex\fR and \fBpython3\fR on \fBPATH\fR; \fB\-\-metrics\-only\fR
+needs only \fBpython3\fR and \fB\-\-tokens\-only\fR needs neither.
+.TP
+.B claudeme cost \fR[\fB\-\-at\fR \fIDATE\fR] [\fB\-\-actual\fR] [\fB\-\-provider\fR \fIP\fR] [\fB\-\-by\fR \fIDIM\fR] [\fB\-\-json\fR]
+Value the stored token ledgers. Tokens are kept as counted facts and prices as
+a dated series, so cost is derived at query time as the sum over days of
+tokens times the price in effect that day — correcting a price re-values
+history instead of contradicting a stored number.
+No transcript is read; the whole command is a scan of what is already on disk.
+\fB\-\-actual\fR (the default) values each day at its own prices;
+\fB\-\-at\fR values everything at one date's, which is how "what would this
+year cost at today's prices" is asked.
+\fB\-\-provider\fR is \fBanthropic\fR, \fBopenai\fR or \fBall\fR;
+\fB\-\-by\fR is \fBmodel\fR, \fBproject\fR, \fBday\fR or \fBprovider\fR.
+Every total states its own coverage: sessions with no ledger, Codex sessions
+that predate usage reporting, and models the table deliberately does not price
+are reported rather than silently counted as zero.
+This is a modelled upper bound on subscription usage, not an invoice.
+The OpenAI table is provisional and the output says so.
 .TP
 .B claudeme snapshot \fR[\fB\-\-dry\-run\fR] [\fB\-\-install\fR] [\fB\-\-uninstall\fR] [\fB\-\-status\fR]
 Extract per-day usage from every transcript still on disk and upsert it into
@@ -190,6 +218,12 @@ Extract per-day usage from every transcript still on disk and upsert it into
 Nothing is copied or moved: only the aggregates are kept, a few kilobytes a day,
 so the numbers survive the deletion of the transcripts they came from. Each day
 records its total plus the same total split by model, project and skill.
+Cache-creation tokens are recorded split into their 1h and 5m halves, which
+bill at different multipliers; days recorded before that split, and whose
+transcripts are gone, can only ever be re-priced approximately.
+Each run also writes the price table in effect that day to
+.IR ~/.config/claudeme/shared/prices/<date>.json ,
+an audit record independent of this binary.
 Re-running is idempotent — transcripts are append-only, so a full rescan plus a
 per-day upsert cannot double count. A recorded day is overwritten only when the
 rescan finds at least as much spend; a day that now reads lower has lost

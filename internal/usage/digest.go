@@ -61,14 +61,34 @@ type Digest struct {
 	Transcript string          `json:"transcript"`
 	Model      string          `json:"model"`
 	DigestedAt string          `json:"digestedAt"`
-	Summary    json.RawMessage `json:"summary"`
+	Summary    json.RawMessage `json:"summary,omitempty"`
+
+	// Metrics is distill.py's deterministic account of the session — when it
+	// ran, on which branches, and the counted totals. Held raw for the same
+	// reason Summary is: distill.py owns the shape. omitempty keeps records
+	// written before this field byte-stable until they are backfilled.
+	Metrics json.RawMessage `json:"metrics,omitempty"`
+
+	// MetricsAt is when the metrics above were derived. Separate from
+	// DigestedAt because the two can happen in different runs: the backfill
+	// writes metrics onto records the model summarized months earlier, and
+	// onto sessions no model has seen at all.
+	MetricsAt string `json:"metricsAt,omitempty"`
+
+	// Tokens is what the session consumed, counted per model and per day and
+	// left unvalued. Cost is derived from it at query time against the price
+	// epoch in effect on the day, so correcting a price re-values history
+	// rather than contradicting a stored number.
+	Tokens *Tokens `json:"tokens,omitempty"`
 }
 
 // Usable reports whether a digest is worth keeping the transcript's deletion
 // on. A record whose summary is absent or empty means the model ran and gave
-// nothing back — it must never gate a delete.
+// nothing back — it must never gate a delete. Metrics deliberately do not
+// count: they are re-derivable from the transcript, so a metrics-only record
+// is no reason to destroy the only copy of what produced it.
 func (d *Digest) Usable() bool {
-	if d == nil || len(d.Summary) == 0 {
+	if d == nil || !d.HasSummary() {
 		return false
 	}
 	var fields struct {
@@ -79,6 +99,26 @@ func (d *Digest) Usable() bool {
 		return false
 	}
 	return fields.Summary != "" && fields.Outcome != ""
+}
+
+// HasSummary reports whether the model ever wrote anything into this record.
+// A metrics-only record has none: the backfill writes it without ever calling
+// the model, and a later run still owes it a summary.
+func (d *Digest) HasSummary() bool {
+	return d != nil && len(d.Summary) > 0 && string(d.Summary) != "null"
+}
+
+// HasMetrics reports whether distill.py's account of the session is on
+// record. False for every digest written before metrics were persisted.
+func (d *Digest) HasMetrics() bool {
+	return d != nil && len(d.Metrics) > 0 && string(d.Metrics) != "null"
+}
+
+// HasTokens reports whether the token ledger is on record. Extraction is
+// deterministic and model-free, so this gates a cheap re-run, not an expensive
+// one — see PendingTokens.
+func (d *Digest) HasTokens() bool {
+	return d != nil && d.Tokens != nil && len(d.Tokens.Models)+len(d.Tokens.Sidechain) > 0
 }
 
 // DigestFile is every digested session for one project on one date, keyed by

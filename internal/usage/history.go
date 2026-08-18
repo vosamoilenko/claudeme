@@ -38,6 +38,20 @@ type Bucket struct {
 	Out        int     `json:"out"`
 	CacheRead  int     `json:"cacheRead"`
 	CacheWrite int     `json:"cacheWrite"`
+
+	// The two halves of CacheWrite, which bill at different multipliers.
+	// omitempty because every day recorded before 2026-08-18 merged them
+	// beyond recovery — an absent pair means "unknown", not "zero", and
+	// Recomputable() is what tells those days apart.
+	CacheWrite1h int `json:"cacheWrite1h,omitempty"`
+	CacheWrite5m int `json:"cacheWrite5m,omitempty"`
+}
+
+// Recomputable reports whether this bucket can be re-priced exactly. A bucket
+// whose cache writes are non-zero but unsplit was recorded before the split
+// existed and its transcripts are gone: it can only be approximated.
+func (b Bucket) Recomputable() bool {
+	return b.CacheWrite == 0 || b.CacheWrite1h+b.CacheWrite5m == b.CacheWrite
 }
 
 // Day is one calendar day of spend: the total, then the same total split three
@@ -71,12 +85,14 @@ func HistoryPath() string {
 // toBucket converts an aggregation row to a durable one.
 func toBucket(s Stats) *Bucket {
 	return &Bucket{
-		Cost:       float64(s.Cost) / 1e6,
-		Calls:      s.Calls,
-		In:         s.In,
-		Out:        s.Out,
-		CacheRead:  s.CacheRead,
-		CacheWrite: s.CacheWrite,
+		Cost:         float64(s.Cost) / 1e6,
+		Calls:        s.Calls,
+		In:           s.In,
+		Out:          s.Out,
+		CacheRead:    s.CacheRead,
+		CacheWrite:   s.CacheWrite,
+		CacheWrite1h: s.CacheWrite1h,
+		CacheWrite5m: s.CacheWrite5m,
 	}
 }
 
@@ -164,6 +180,8 @@ func addBucket(m map[string]*Bucket, name string, s Stats) {
 	b.Out += s.Out
 	b.CacheRead += s.CacheRead
 	b.CacheWrite += s.CacheWrite
+	b.CacheWrite1h += s.CacheWrite1h
+	b.CacheWrite5m += s.CacheWrite5m
 }
 
 // MergeResult is what one merge changed.
@@ -198,8 +216,13 @@ func MergeHistory(old *History, fresh map[string]*Day, now string) (*History, Me
 		case d.Cost < prev.Cost:
 			res.Kept = append(res.Kept, day)
 			continue
-		case d.Cost == prev.Cost && d.Calls == prev.Calls:
+		case d.Cost == prev.Cost && d.Calls == prev.Calls && !gainsSplit(prev, d):
 			continue // unchanged
+		case d.Cost == prev.Cost && d.Calls == prev.Calls:
+			// Same money, more detail: the stored day predates the 1h/5m
+			// split and this scan can still see it. Without this arm the
+			// split would only ever reach days that also changed.
+			res.Updated = append(res.Updated, day)
 		default:
 			res.Updated = append(res.Updated, day)
 		}
@@ -210,6 +233,13 @@ func MergeHistory(old *History, fresh map[string]*Day, now string) (*History, Me
 	sort.Strings(res.Updated)
 	sort.Strings(res.Kept)
 	return out, res
+}
+
+// gainsSplit reports whether the fresh day can say how its cache writes broke
+// down and the stored one cannot. True only while the transcripts behind that
+// day still exist; once they age out the stored day is approximate forever.
+func gainsSplit(prev, fresh *Day) bool {
+	return !prev.Recomputable() && fresh.Recomputable()
 }
 
 // LoadHistory reads the snapshot file. A missing file is an empty history, not
@@ -290,6 +320,8 @@ func (h *History) Aggregate(days []string, pick func(*Day) map[string]*Bucket) m
 			cur.Out += b.Out
 			cur.CacheRead += b.CacheRead
 			cur.CacheWrite += b.CacheWrite
+			cur.CacheWrite1h += b.CacheWrite1h
+			cur.CacheWrite5m += b.CacheWrite5m
 		}
 	}
 	return out

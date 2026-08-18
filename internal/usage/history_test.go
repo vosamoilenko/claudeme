@@ -204,3 +204,67 @@ func TestIsDate(t *testing.T) {
 		}
 	}
 }
+
+// The two halves must always reconstruct the legacy field, or a stored day
+// contradicts itself.
+func TestCacheWriteSplitSumsToLegacyField(t *testing.T) {
+	s := Stats{Cost: 1_000_000, Calls: 3, In: 100, Out: 50, CacheRead: 900,
+		CacheWrite: 300, CacheWrite1h: 200, CacheWrite5m: 100}
+	b := toBucket(s)
+	if b.CacheWrite1h+b.CacheWrite5m != b.CacheWrite {
+		t.Fatalf("%d + %d != %d", b.CacheWrite1h, b.CacheWrite5m, b.CacheWrite)
+	}
+	if !b.Recomputable() {
+		t.Fatal("a split bucket must be recomputable")
+	}
+
+	addBucket(map[string]*Bucket{"x": b}, "x", s)
+	if b.CacheWrite1h+b.CacheWrite5m != b.CacheWrite {
+		t.Fatalf("addBucket broke the invariant: %+v", *b)
+	}
+
+	// A day recorded before the split existed reports itself as approximate
+	// rather than claiming its cache writes were all 5m.
+	legacy := &Bucket{CacheWrite: 300}
+	if legacy.Recomputable() {
+		t.Fatal("an unsplit day must not claim to be recomputable")
+	}
+	// A day that wrote no cache at all has nothing to split and is exact.
+	if !(&Bucket{}).Recomputable() {
+		t.Fatal("a day with no cache writes is trivially recomputable")
+	}
+}
+
+// Rescanning a day whose money has not moved must still be allowed to add the
+// split — otherwise the detail only ever reaches days that also changed.
+func TestMergeHistoryAddsTheSplitToAnUnchangedDay(t *testing.T) {
+	stored := &Day{Bucket: Bucket{Cost: 12.5, Calls: 40, CacheWrite: 300}}
+	fresh := &Day{Bucket: Bucket{Cost: 12.5, Calls: 40, CacheWrite: 300, CacheWrite1h: 200, CacheWrite5m: 100}}
+
+	old := &History{Version: historyVersion, Days: map[string]*Day{"2026-08-01": stored}}
+	out, res := MergeHistory(old, map[string]*Day{"2026-08-01": fresh}, "2026-08-18T00:00:00Z")
+
+	if len(res.Updated) != 1 {
+		t.Fatalf("want the day updated, got %+v", res)
+	}
+	if !out.Days["2026-08-01"].Recomputable() {
+		t.Fatal("the split did not land")
+	}
+
+	// Second pass: nothing left to gain, so nothing is rewritten.
+	out2, res2 := MergeHistory(out, map[string]*Day{"2026-08-01": fresh}, "2026-08-18T01:00:00Z")
+	if len(res2.Updated) != 0 || len(res2.Added) != 0 {
+		t.Fatalf("a settled day must not churn: %+v", res2)
+	}
+	if !out2.Days["2026-08-01"].Recomputable() {
+		t.Fatal("the split was lost on the second pass")
+	}
+
+	// A rescan that sees LESS money is still refused: that is retention, not
+	// news, and the split must not be a way around the rule.
+	lower := &Day{Bucket: Bucket{Cost: 3.0, Calls: 10, CacheWrite: 100, CacheWrite1h: 60, CacheWrite5m: 40}}
+	out3, res3 := MergeHistory(out, map[string]*Day{"2026-08-01": lower}, "2026-08-18T02:00:00Z")
+	if len(res3.Kept) != 1 || out3.Days["2026-08-01"].Cost != 12.5 {
+		t.Fatalf("a lower rescan overwrote the recorded day: %+v / %v", res3, out3.Days["2026-08-01"].Cost)
+	}
+}

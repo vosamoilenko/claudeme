@@ -193,23 +193,46 @@ func Settled(cands []Candidate, now time.Time, cooloff time.Duration) []Candidat
 	return out
 }
 
-// Pending drops the candidates already on record, so a run only spends model
-// calls on sessions that have none.
+// Pending drops the candidates already summarized, so a run only spends model
+// calls on sessions that have none. A metrics-only record does not count: the
+// backfill writes those without calling the model, and they are still owed a
+// summary.
 func Pending(root string, cands []Candidate) ([]Candidate, error) {
-	digested := map[string]map[string]bool{}
+	return pendingBy(root, cands, func(d *Digest) bool { return d.HasSummary() })
+}
+
+// PendingMetrics drops the candidates whose record already carries distill.py's
+// account of the session. Everything else is in: the sessions summarized before
+// metrics were persisted, and the far larger set never digested at all.
+func PendingMetrics(root string, cands []Candidate) ([]Candidate, error) {
+	return pendingBy(root, cands, func(d *Digest) bool { return d.HasMetrics() })
+}
+
+// PendingTokens drops the candidates whose record already carries a token
+// ledger. Like PendingMetrics and unlike Pending, it is free of the model: a
+// session whose summary failed, or which was digested before this field
+// existed, is still a candidate.
+func PendingTokens(root string, cands []Candidate) ([]Candidate, error) {
+	return pendingBy(root, cands, func(d *Digest) bool { return d.HasTokens() })
+}
+
+// pendingBy keeps the candidates whose record does not yet satisfy done,
+// reading each date+project file once however many sessions it holds.
+func pendingBy(root string, cands []Candidate, done func(*Digest) bool) ([]Candidate, error) {
+	records := map[string]map[string]*Digest{}
 	var out []Candidate
 	for _, c := range cands {
 		key := c.Date + Sep + c.Project
-		seen, ok := digested[key]
+		seen, ok := records[key]
 		if !ok {
 			var err error
-			seen, err = Digested(root, c.Date, c.Project)
+			seen, err = Records(root, c.Date, c.Project)
 			if err != nil {
 				return nil, err
 			}
-			digested[key] = seen
+			records[key] = seen
 		}
-		if !seen[c.Session] {
+		if !done(seen[c.Session]) {
 			out = append(out, c)
 		}
 	}

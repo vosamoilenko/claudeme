@@ -119,6 +119,62 @@ func TestUsableRejectsEmptySummaries(t *testing.T) {
 	}
 }
 
+// Metrics are re-derivable from the transcript; a summary is not. A record
+// carrying only metrics must never be strong enough to gate a delete.
+func TestUsableIgnoresMetrics(t *testing.T) {
+	d := testDigest("s1", "2026-08-13", "")
+	d.Metrics = json.RawMessage(`{"started":"2026-08-13T09:00:00Z","metrics":{"turns":9}}`)
+	if d.Usable() {
+		t.Fatal("a metrics-only digest must not be usable")
+	}
+
+	d.Summary = json.RawMessage(okSummary)
+	if !d.Usable() {
+		t.Fatal("metrics must not make a complete summary unusable")
+	}
+}
+
+// distill.py owns the metrics shape, so the round trip has to preserve it
+// byte for byte rather than through a Go mirror of the fields.
+func TestPutDigestRoundTripsMetrics(t *testing.T) {
+	root := t.TempDir()
+	raw := `{"session_id":"s1","branches":["feat/DP-3282","sandbox"],"started":"2026-08-17T18:20:53.322Z","metrics":{"wall_ms":7122301}}`
+
+	d := testDigest("s1", "2026-08-13", okSummary)
+	d.Metrics = json.RawMessage(raw)
+	if err := PutDigest(root, d); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := LoadDigest(digestPathIn(root, "2026-08-13", "thing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := f.Sessions["s1"].Metrics
+	var want, have any
+	if err := json.Unmarshal([]byte(raw), &want); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(got, &have); err != nil {
+		t.Fatalf("stored metrics are not JSON: %v", err)
+	}
+	if fmt.Sprint(want) != fmt.Sprint(have) {
+		t.Fatalf("metrics changed in the round trip:\n want %s\n  got %s", raw, got)
+	}
+}
+
+// A record written before metrics existed must stay byte-identical, so the
+// backfill is the only thing that ever adds the key.
+func TestDigestWithoutMetricsOmitsTheKey(t *testing.T) {
+	data, err := json.Marshal(testDigest("s1", "2026-08-13", okSummary))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "metrics") {
+		t.Fatalf("empty metrics must not be encoded: %s", data)
+	}
+}
+
 func TestSaveDigestIsAtomic(t *testing.T) {
 	root := t.TempDir()
 	if err := PutDigest(root, testDigest("s1", "2026-08-13", okSummary)); err != nil {
@@ -305,6 +361,121 @@ func TestPendingDropsDigestedSessions(t *testing.T) {
 	}
 	if len(pending) != 1 || pending[0].Session != "s2" {
 		t.Fatalf("want only s2 pending, got %+v", pending)
+	}
+}
+
+// The backfill's predicate: a summarized session still owes metrics, and a
+// metrics-only session still owes a summary. Neither is finished by the other.
+func TestPendingMetricsAndPendingAskDifferentQuestions(t *testing.T) {
+	live := t.TempDir()
+	root := t.TempDir()
+	dir, cwd := "-tmp-work-thing", "/tmp/work/thing"
+	writeTranscript(t, live, dir, "s1", cwd, "2026-08-13T10:00:00Z", false)
+	writeTranscript(t, live, dir, "s2", cwd, "2026-08-13T11:00:00Z", false)
+	writeTranscript(t, live, dir, "s3", cwd, "2026-08-13T12:00:00Z", false)
+
+	cands, err := ScanSessions([]string{live})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// s1: summarized, no metrics — what every record looked like before this.
+	summarized := testDigest("s1", "2026-08-13", okSummary)
+	summarized.Project = cands[0].Project
+	// s2: metrics only — what the backfill writes for a session never digested.
+	metricsOnly := testDigest("s2", "2026-08-13", "")
+	metricsOnly.Project = cands[0].Project
+	metricsOnly.Metrics = json.RawMessage(`{"started":"2026-08-13T11:00:00Z"}`)
+	metricsOnly.MetricsAt = "2026-08-18T05:00:00Z"
+	for _, d := range []*Digest{summarized, metricsOnly} {
+		if err := PutDigest(root, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	pending, err := Pending(root, cands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 2 || pending[0].Session != "s2" || pending[1].Session != "s3" {
+		t.Fatalf("want s2 and s3 owing a summary, got %+v", pending)
+	}
+
+	needMetrics, err := PendingMetrics(root, cands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(needMetrics) != 2 || needMetrics[0].Session != "s1" || needMetrics[1].Session != "s3" {
+		t.Fatalf("want s1 and s3 owing metrics, got %+v", needMetrics)
+	}
+}
+
+// The backfill merges onto the record already there rather than replacing it:
+// re-running the model over 500 sessions is exactly what it exists to avoid.
+func TestBackfillingMetricsKeepsTheSummary(t *testing.T) {
+	root := t.TempDir()
+	if err := PutDigest(root, testDigest("s1", "2026-08-13", okSummary)); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := GetDigest(root, "2026-08-13", "thing", "s1")
+	if err != nil || d == nil {
+		t.Fatalf("GetDigest = %v, %v", d, err)
+	}
+	d.Metrics = json.RawMessage(`{"started":"2026-08-13T10:00:00Z"}`)
+	d.MetricsAt = "2026-08-18T05:00:00Z"
+	if err := PutDigest(root, d); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := GetDigest(root, "2026-08-13", "thing", "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.HasMetrics() {
+		t.Fatal("metrics were not stored")
+	}
+	// SaveDigest re-indents raw JSON, so the summary is compared by content.
+	var before, after any
+	if err := json.Unmarshal([]byte(okSummary), &before); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(got.Summary, &after); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(before) != fmt.Sprint(after) {
+		t.Fatalf("backfill changed the summary: %s", got.Summary)
+	}
+	if got.Model != "gpt-5.6-luna" || got.DigestedAt != "2026-08-14T05:00:00Z" {
+		t.Fatalf("backfill disturbed the summary record: %+v", *got)
+	}
+
+	// A missing session is nil, not an error: the backfill treats it as new.
+	if got, err := GetDigest(root, "2026-08-13", "thing", "nope"); got != nil || err != nil {
+		t.Fatalf("want nil/nil for an unknown session, got %v / %v", got, err)
+	}
+}
+
+// Updated marks the newest write to the file. A backfill stamping an old
+// session must not drag it backwards past a newer summary.
+func TestPutDigestUpdatedOnlyMovesForward(t *testing.T) {
+	root := t.TempDir()
+	newest := testDigest("s1", "2026-08-13", okSummary)
+	newest.DigestedAt = "2026-08-14T05:00:00Z"
+	older := testDigest("s2", "2026-08-13", okSummary)
+	older.DigestedAt = "2026-08-01T05:00:00Z"
+	for _, d := range []*Digest{newest, older} {
+		if err := PutDigest(root, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	f, err := LoadDigest(digestPathIn(root, "2026-08-13", "thing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Updated != "2026-08-14T05:00:00Z" {
+		t.Fatalf("Updated went backwards: %q", f.Updated)
 	}
 }
 

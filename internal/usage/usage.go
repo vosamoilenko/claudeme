@@ -25,51 +25,25 @@ import (
 // Price is the $/MTok list price for a model.
 type Price struct{ In, Out float64 }
 
-// Prices holds list pricing per normalized model id.
-var Prices = map[string]Price{
-	"claude-opus-5":     {5.0, 25.0},
-	"claude-opus-4-8":   {5.0, 25.0},
-	"claude-opus-4-7":   {5.0, 25.0},
-	"claude-opus-4-6":   {5.0, 25.0},
-	"claude-fable-5":    {10.0, 50.0},
-	"claude-mythos-5":   {10.0, 50.0},
-	"claude-sonnet-5":   {3.0, 15.0},
-	"claude-sonnet-4-6": {3.0, 15.0},
-	"claude-haiku-4-5":  {1.0, 5.0},
-}
-
-// Cache multipliers applied to the input price.
-const (
-	cache1hMult   = 2.0
-	cache5mMult   = 1.25
-	cacheReadMult = 0.1
-)
-
-// bareAliases maps the short model names Claude Code sometimes records.
-var bareAliases = map[string]string{
-	"opus":   "claude-opus-5",
-	"sonnet": "claude-sonnet-5",
-	"fable":  "claude-fable-5",
-	"haiku":  "claude-haiku-4-5",
-}
-
 var dateSuffix = regexp.MustCompile(`-\d{8}$`)
 
-// NormalizeModel maps a recorded model string to a pricing key.
-// Returns "" when the model has no list price (synthetic, non-Anthropic).
+// trimModelSuffixes strips the decorations a recorded model string carries
+// that are not part of its pricing identity: the context-window marker and
+// the -YYYYMMDD release date.
+func trimModelSuffixes(model string) string {
+	m := strings.TrimSuffix(model, "[1m]")
+	return dateSuffix.ReplaceAllString(m, "")
+}
+
+// NormalizeModel maps a recorded model string to a pricing key under today's
+// prices. Returns "" when the model has no list price (synthetic,
+// non-Anthropic). Use PriceAt when the date matters.
 func NormalizeModel(model string) string {
-	if model == "" {
+	e, ok := EpochAt(Anthropic, "9999-12-31")
+	if !ok {
 		return ""
 	}
-	if full, ok := bareAliases[model]; ok {
-		return full
-	}
-	m := strings.TrimSuffix(model, "[1m]")
-	m = dateSuffix.ReplaceAllString(m, "")
-	if _, ok := Prices[m]; ok {
-		return m
-	}
-	return ""
+	return e.resolve(model)
 }
 
 // ProjectsRoot returns the shared transcript directory Claude Code writes to.
@@ -563,12 +537,19 @@ func Match(projects []Project, query string) []Project {
 // Stats is one row of a breakdown table. Cost is in micro-dollars so the
 // aggregation stays integral.
 type Stats struct {
-	Cost       int64
-	Calls      int
-	In         int
-	Out        int
-	CacheRead  int
-	CacheWrite int
+	Cost      int64
+	Calls     int
+	In        int
+	Out       int
+	CacheRead int
+
+	// CacheWrite is the sum of the two halves below, kept because every
+	// display site reads it and one number is what a reader wants. The halves
+	// are kept because they bill at different multipliers (2.0 vs 1.25), and
+	// without them a stored day can never be re-priced exactly.
+	CacheWrite   int
+	CacheWrite1h int
+	CacheWrite5m int
 }
 
 func (s *Stats) add(o Stats) {
@@ -578,6 +559,8 @@ func (s *Stats) add(o Stats) {
 	s.Out += o.Out
 	s.CacheRead += o.CacheRead
 	s.CacheWrite += o.CacheWrite
+	s.CacheWrite1h += o.CacheWrite1h
+	s.CacheWrite5m += o.CacheWrite5m
 }
 
 // CwdStats is one cwd's slice of a report: its total, plus the same day and
@@ -680,28 +663,42 @@ type entry struct {
 				Command string `json:"command"`
 			} `json:"input"`
 		} `json:"content"`
-		Usage *struct {
-			InputTokens     int `json:"input_tokens"`
-			OutputTokens    int `json:"output_tokens"`
-			CacheReadTokens int `json:"cache_read_input_tokens"`
-			CacheCreation   struct {
-				Ephemeral1h int `json:"ephemeral_1h_input_tokens"`
-				Ephemeral5m int `json:"ephemeral_5m_input_tokens"`
-			} `json:"cache_creation"`
-		} `json:"usage"`
+		Usage *transcriptUsage `json:"usage"`
 	} `json:"message"`
 }
 
-// costMicros returns the list-price cost of one API call, in micro-dollars.
+// transcriptUsage is one assistant message's usage block. Named rather than
+// inline so the token ledger can take one by pointer without restating it.
+type transcriptUsage struct {
+	InputTokens     int `json:"input_tokens"`
+	OutputTokens    int `json:"output_tokens"`
+	CacheReadTokens int `json:"cache_read_input_tokens"`
+	CacheCreation   struct {
+		Ephemeral1h int `json:"ephemeral_1h_input_tokens"`
+		Ephemeral5m int `json:"ephemeral_5m_input_tokens"`
+	} `json:"cache_creation"`
+}
+
+// costMicros returns the cost of one API call in micro-dollars, valued at the
+// prices in effect on the day the call happened. A call with no usable
+// timestamp falls back to today's epoch.
 func costMicros(e *entry, model string) int64 {
-	p := Prices[model]
+	date := "9999-12-31"
+	if len(e.Timestamp) >= 10 {
+		date = e.Timestamp[:10]
+	}
+	p, ok := PriceAt(Anthropic, date, model)
+	if !ok {
+		return 0
+	}
 	u := e.Message.Usage
-	dollars := (float64(u.InputTokens)*p.In +
-		float64(u.CacheCreation.Ephemeral1h)*p.In*cache1hMult +
-		float64(u.CacheCreation.Ephemeral5m)*p.In*cache5mMult +
-		float64(u.CacheReadTokens)*p.In*cacheReadMult +
-		float64(u.OutputTokens)*p.Out) / 1e6
-	return int64(dollars * 1e6)
+	return cost(usageTokens{
+		In:           u.InputTokens,
+		Out:          u.OutputTokens,
+		CacheRead:    u.CacheReadTokens,
+		CacheWrite1h: u.CacheCreation.Ephemeral1h,
+		CacheWrite5m: u.CacheCreation.Ephemeral5m,
+	}, p, MultAt(Anthropic, date))
 }
 
 // NoSkill is the bucket for spend that happened with no skill loaded.
@@ -871,12 +868,14 @@ func analyzeFile(path, cwd string, rep *Report, seen map[string]bool, recentSkil
 
 		u := e.Message.Usage
 		row := Stats{
-			Cost:       costMicros(&e, model),
-			Calls:      1,
-			In:         u.InputTokens,
-			Out:        u.OutputTokens,
-			CacheRead:  u.CacheReadTokens,
-			CacheWrite: u.CacheCreation.Ephemeral1h + u.CacheCreation.Ephemeral5m,
+			Cost:         costMicros(&e, model),
+			Calls:        1,
+			In:           u.InputTokens,
+			Out:          u.OutputTokens,
+			CacheRead:    u.CacheReadTokens,
+			CacheWrite:   u.CacheCreation.Ephemeral1h + u.CacheCreation.Ephemeral5m,
+			CacheWrite1h: u.CacheCreation.Ephemeral1h,
+			CacheWrite5m: u.CacheCreation.Ephemeral5m,
 		}
 
 		day := "unknown"

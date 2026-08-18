@@ -73,6 +73,8 @@ func main() {
 		cmd.Digest()
 	case "history":
 		cmd.History()
+	case "cost":
+		cmd.Cost()
 	case "heatmap":
 		cmd.Heatmap()
 
@@ -124,6 +126,7 @@ func printHelp() {
 	fmt.Println(cmd.HeaderStyle.Render("Digest:"))
 	fmt.Println("  claudeme digest [--since D] [--all] [--archived] [--limit N] [-n]")
 	fmt.Println("                                      Summarize sessions into history/<date>/<project>.json")
+	fmt.Println("  claudeme digest --metrics-only [-n] Fill in timings/branches only — no model, no cost")
 	fmt.Println("  claudeme digest --install           Run it daily at 05:00 (launchd)")
 	fmt.Println("  claudeme digest --uninstall         Remove the daily job")
 	fmt.Println("  claudeme digest --status            Show schedule and what's digested")
@@ -137,6 +140,9 @@ func printHelp() {
 	fmt.Println("  claudeme history --by model|project|skill")
 	fmt.Println("                                      Sum the range by dimension")
 	fmt.Println("  claudeme history --json             Emit the raw records")
+	fmt.Println("  claudeme cost [--at D] [--actual]   Value stored token ledgers at dated prices")
+	fmt.Println("  claudeme cost --provider anthropic|openai|all")
+	fmt.Println("  claudeme cost --by model|project|day|provider")
 	fmt.Println()
 	fmt.Println(cmd.HeaderStyle.Render("Aliases:"))
 	fmt.Println("  claudeme alias add <name> <email>   Create alias for an account")

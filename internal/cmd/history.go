@@ -95,6 +95,20 @@ func Snapshot() {
 			len(res.Kept), plural(len(res.Kept)), strings.Join(res.Kept, " "))))
 	}
 	fmt.Println(DimStyle.Render("  " + shortenHome(path)))
+
+	// Record what the price table said today. Almost always a no-op write;
+	// the value is having a dated audit trail on disk that a later correction
+	// to the seed table cannot silently rewrite.
+	if !dryRun {
+		today := time.Now().UTC().Format("2006-01-02")
+		wrote, err := usage.RecordPrices(usage.PricesRoot(), today, time.Now().UTC().Format(time.RFC3339))
+		switch {
+		case err != nil:
+			fmt.Fprintf(os.Stderr, "  prices: %v\n", err)
+		case wrote:
+			fmt.Println(DimStyle.Render("  prices recorded → " + shortenHome(usage.PricesRoot())))
+		}
+	}
 }
 
 // History prints the recorded time series. It reads only the snapshot file, so
